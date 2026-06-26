@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, ChevronLeft } from "lucide-react";
 import TopBar from "../components/TopBar";
+import Button from "../components/Button";
 import Stepper from "../components/Stepper";
 import Card from "../components/Card";
 import BarraProgresso from "../components/BarraProgresso";
@@ -199,37 +200,35 @@ export default function Cascata() {
           // Detecta quais etapas já foram concluídas com base nos campos não-nulos
           const concluidas = [];
           if (dados.documentos?.length > 0) concluidas.push(1);
-          if (dados.baseline)                concluidas.push(2);
-          if (dados.edital)                  concluidas.push(3);
+          if (dados.baseline)               concluidas.push(2);
+          if (dados.edital)                 concluidas.push(3);
           if (dados.propostas_tecnicas?.length > 0) concluidas.push(4);
-          if (dados.comparacao_tecnica)      concluidas.push(5);
-          if (dados.equalizacao_comercial)   concluidas.push(6);
-          if (dados.recomendacoes)           concluidas.push(7);
-          if (dados.estrategia_categoria)    concluidas.push(8);
+          if (dados.comparacao_tecnica)     concluidas.push(5);
+          if (dados.equalizacao_comercial)  concluidas.push(6);
+          if (dados.recomendacoes)          concluidas.push(7);
+          if (dados.estrategia_categoria)   concluidas.push(8);
 
-          // Reconstrói resultadosPorEtapa com os dados necessários para cada componente.
-          // A maioria dos componentes (BaselineConteudo, EditalConteudo, etc.) busca
-          // seus próprios dados via sessionId — aqui só preenchemos o que é lido
-          // DIRETAMENTE pelo Cascata (principalmente etapas 6 e 8).
-          const resultados = {};
-          if (dados.documentos?.length > 0) resultados[1] = { analise: {} };
-          if (dados.baseline)               resultados[2] = { analise: dados.baseline };
-          if (dados.edital)                 resultados[3] = { analise: dados.edital };
-          if (dados.propostas_tecnicas?.length > 0) resultados[4] = { analise: {} };
-          if (dados.comparacao_tecnica)     resultados[5] = { analise: dados.comparacao_tecnica };
-          if (dados.equalizacao_comercial)  resultados[6] = { analise: dados.equalizacao_comercial };
-          if (dados.recomendacoes)          resultados[7] = { analise: dados.recomendacoes };
-          if (dados.estrategia_categoria)   resultados[8] = { analise: dados.estrategia_categoria };
+          // Usa os mesmos helpers funcionais do fluxo "ao vivo" (marcarConcluida,
+          // guardarResultado, definirFase) para garantir consistência — eles usam
+          // a forma funcional do setState (prev => ...) que é segura mesmo com
+          // múltiplas chamadas em sequência e com Strict Mode do React.
 
-          // Marca todas as etapas concluídas como CONFIRMACAO
-          const novasFases = {};
+          // Resultados: a maioria dos componentes busca os próprios dados via sessionId;
+          // aqui só preenchemos o que a Cascata lê diretamente (etapas 6 e 8).
+          if (dados.documentos?.length > 0) guardarResultado(1, { analise: {} });
+          if (dados.baseline)               guardarResultado(2, { analise: dados.baseline });
+          if (dados.edital)                 guardarResultado(3, { analise: dados.edital });
+          if (dados.propostas_tecnicas?.length > 0) guardarResultado(4, { analise: {} });
+          if (dados.comparacao_tecnica)     guardarResultado(5, { analise: dados.comparacao_tecnica });
+          if (dados.equalizacao_comercial)  guardarResultado(6, { analise: dados.equalizacao_comercial });
+          if (dados.recomendacoes)          guardarResultado(7, { analise: dados.recomendacoes });
+          if (dados.estrategia_categoria)   guardarResultado(8, { analise: dados.estrategia_categoria });
+
+          // Marca etapas concluídas e define fase CONFIRMACAO — mesma ordem do fluxo ao vivo
           for (const n of concluidas) {
-            novasFases[n] = FASE.CONFIRMACAO;
+            marcarConcluida(n);
+            definirFase(n, FASE.CONFIRMACAO);
           }
-
-          setEtapasConcluidas(concluidas);
-          setResultadosPorEtapa(resultados);
-          setFasePorEtapa(novasFases);
 
           // Abre direto na última etapa concluída (ou etapa 1 se nada concluído)
           const ultimaConcluida = concluidas[concluidas.length - 1] || 1;
@@ -334,6 +333,11 @@ export default function Cascata() {
 
   function handleClicarEtapaNoStepper(numero) {
     if (!etapasConcluidas.includes(numero)) return;
+    // Guard defensivo: se a etapa está concluída mas sem fase definida
+    // (pode ocorrer em edge cases do fluxo de reabertura), corrige agora.
+    if (!fasePorEtapa[numero]) {
+      definirFase(numero, FASE.CONFIRMACAO);
+    }
     setEtapaVisualizada(numero);
   }
 
@@ -400,13 +404,23 @@ export default function Cascata() {
             etapasProcessando={etapasProcessando}
             onClicarEtapa={handleClicarEtapaNoStepper}
           />
-          <p className="text-[11px] text-am-text-secondary text-center mt-2">
-            {etapasProcessando.size > 0
-              ? `Etapa ${[...etapasProcessando].join(", ")} processando em segundo plano — você pode navegar livremente`
-              : etapasConcluidas.length > 0
-              ? "Clique em uma etapa já concluída (✓) para revisitá-la"
-              : ""}
-          </p>
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-[11px] text-am-text-secondary">
+              {etapasProcessando.size > 0
+                ? `Etapa ${[...etapasProcessando].join(", ")} processando em segundo plano — você pode navegar livremente`
+                : etapasConcluidas.length > 0
+                ? "Clique em uma etapa já concluída (✓) para revisitá-la"
+                : ""}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={ChevronLeft}
+              onClick={() => navigate("/historico")}
+            >
+              Histórico
+            </Button>
+          </div>
         </Card>
 
         <Card title={TITULO_ETAPA[etapaVisualizada]}>
