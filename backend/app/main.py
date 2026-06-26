@@ -18,11 +18,11 @@ import os
 import tempfile
 
 import anthropic
-from fastapi import FastAPI, UploadFile, HTTPException, File, Query
+from fastapi import FastAPI, Request, UploadFile, HTTPException, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 
-from . import sessions
+from . import sessions, database
 from .erros import ErroEtapa
 from .ia import ChaveApiAusente
 from .leitura import read_uploaded_file
@@ -73,6 +73,35 @@ app = FastAPI(
     description="API que expõe o pipeline de 8 etapas de análise de procurement.",
     version="1.0.0",
 )
+
+
+@app.on_event("startup")
+def startup():
+    """Inicializa o banco SQLite na subida do servidor."""
+    database.inicializar_banco()
+
+
+@app.middleware("http")
+async def auto_persistir_sessao(request: Request, call_next):
+    """
+    Após cada requisição mutante bem-sucedida (POST/PUT/PATCH) que envolve
+    um session_id, persiste automaticamente o Estudo no banco SQLite.
+
+    Isso garante que o trabalho não se perde em caso de restart — a próxima
+    chamada a obter_estudo recupera a sessão do banco se ela não estiver mais
+    em memória.
+    """
+    response = await call_next(request)
+    if request.method in ("POST", "PUT", "PATCH") and response.status_code < 400:
+        session_id = request.path_params.get("session_id")
+        if session_id and sessions.sessao_existe(session_id):
+            try:
+                estudo = sessions.obter_estudo(session_id)
+                database.salvar_estudo(session_id, estudo)
+            except Exception as e:
+                print(f"[WARN] Falha ao persistir sessão {session_id[:8]}…: {e}")
+    return response
+
 
 # CORS liberado para desenvolvimento local (o frontend React roda em outra
 # porta). Em produção, restrinja allow_origins ao domínio real do frontend.
@@ -140,7 +169,11 @@ def _get_estudo(session_id: str):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "sessoes_ativas": sessions.total_sessoes_ativas()}
+    return {
+        "status": "ok",
+        "sessoes_ativas": sessions.total_sessoes_ativas(),
+        "sessoes_salvas_no_banco": len(database.listar_sessoes_salvas()),
+    }
 
 
 @app.get("/pipeline")

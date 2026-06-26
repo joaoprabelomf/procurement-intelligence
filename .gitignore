@@ -26,6 +26,13 @@ venv/
 *.log
 *.sqlite3
 *.db
+*.db-shm
+*.db-wal
+
+# Banco de dados de sessões (gerado em runtime — nunca no git)
+backend/data/estudos.db
+backend/data/estudos.db-shm
+backend/data/estudos.db-wal
 
 # ============================================================
 # Node.js / Frontend
