@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, ChevronLeft } from "lucide-react";
 import TopBar from "../components/TopBar";
+import Button from "../components/Button";
 import Stepper from "../components/Stepper";
 import Card from "../components/Card";
 import BarraProgresso from "../components/BarraProgresso";
@@ -19,6 +20,7 @@ import CheckpointEtapa6 from "../components/CheckpointEtapa6";
 import CheckpointRiscoEtapa8 from "../components/CheckpointRiscoEtapa8";
 import { useSessao } from "../lib/SessaoContext";
 import {
+  obterEstadoSessao,
   rodarEtapa2, confirmarAnualizacao,
   rodarEtapa3, rodarEtapa4, rodarEtapa4b, rodarEtapa5,
   precisaCheckpointEtapa6, confirmarCheckpointEtapa6, rodarEtapa6,
@@ -86,6 +88,7 @@ export default function Cascata() {
   const [erroPorEtapa, setErroPorEtapa] = useState({});
   const [carregandoAcao, setCarregandoAcao] = useState(false);
   const [carregandoRefazer, setCarregandoRefazer] = useState(false);
+  const [carregandoReabertura, setCarregandoReabertura] = useState(false);
 
   // sessionId não muda durante a vida da tela, mas guardamos numa ref para
   // os callbacks assíncronos de background sempre lerem o valor mais atual,
@@ -187,9 +190,66 @@ export default function Cascata() {
   }, [marcarProcessando, definirFase, definirErro, guardarResultado, marcarConcluida]);
 
   useEffect(() => {
-    if (Object.keys(resultadosPorEtapa).length === 0) {
+    if (location.state?.reabrindo) {
+      // ── Modo REABERTURA: carrega o estado do estudo existente no banco ──
+      setCarregandoReabertura(true);
+      (async () => {
+        try {
+          const dados = await obterEstadoSessao(sessionIdRef.current);
+
+          // Detecta quais etapas já foram concluídas.
+          // O fluxo é sempre sequencial, então etapas 1..etapa_atual foram todas percorridas.
+          // Usar etapa_atual como intervalo corrige o caso em que etapa 2 (sem baseline)
+          // ou etapa 3 (sem edital) não atualizam esse campo — mas etapas posteriores o fazem.
+          const etapaMax = dados.etapa_atual ?? 0;
+          const concluidasSet = new Set();
+          for (let n = 1; n <= etapaMax; n++) concluidasSet.add(n);
+
+          // etapa3.py sempre define estudo.edital (mesmo sem doc), mas pode não atualizar
+          // etapa_atual quando não há documento. Se edital existe, etapas 2 e 3 foram rodadas.
+          if (dados.edital) { concluidasSet.add(2); concluidasSet.add(3); }
+
+          const concluidas = [...concluidasSet].sort((a, b) => a - b);
+
+          // Usa os mesmos helpers funcionais do fluxo "ao vivo" (marcarConcluida,
+          // guardarResultado, definirFase) para garantir consistência — eles usam
+          // a forma funcional do setState (prev => ...) que é segura mesmo com
+          // múltiplas chamadas em sequência e com Strict Mode do React.
+
+          // Resultados: a maioria dos componentes busca os próprios dados via sessionId;
+          // aqui só preenchemos o que a Cascata lê diretamente (etapas 6 e 8).
+          if (dados.documentos?.length > 0) guardarResultado(1, { analise: {} });
+          // Etapa 2 pode não ter baseline (sem doc de baseline) — ainda assim foi concluída;
+          // guardamos um stub para que o componente renderize em CONFIRMACAO.
+          if (concluidasSet.has(2))         guardarResultado(2, { analise: dados.baseline ?? null });
+          if (dados.edital)                 guardarResultado(3, { analise: dados.edital });
+          if (dados.propostas_tecnicas?.length > 0) guardarResultado(4, { analise: {} });
+          if (dados.comparacao_tecnica)     guardarResultado(5, { analise: dados.comparacao_tecnica });
+          if (dados.equalizacao_comercial)  guardarResultado(6, { analise: dados.equalizacao_comercial });
+          if (dados.recomendacoes)          guardarResultado(7, { analise: dados.recomendacoes });
+          if (dados.estrategia_categoria)   guardarResultado(8, { analise: dados.estrategia_categoria });
+
+          // Marca etapas concluídas e define fase CONFIRMACAO — mesma ordem do fluxo ao vivo
+          for (const n of concluidas) {
+            marcarConcluida(n);
+            definirFase(n, FASE.CONFIRMACAO);
+          }
+
+          // Abre direto na última etapa concluída (ou etapa 1 se nada concluído)
+          const ultimaConcluida = concluidas[concluidas.length - 1] || 1;
+          setEtapaVisualizada(ultimaConcluida);
+        } catch {
+          // Se falhar ao carregar, volta para upload
+          navigate("/upload");
+        } finally {
+          setCarregandoReabertura(false);
+        }
+      })();
+    } else if (Object.keys(resultadosPorEtapa).length === 0) {
+      // ── Modo NOVO ESTUDO sem resultado da etapa 1 — redireciona ──
       navigate("/upload");
     } else {
+      // ── Modo NOVO ESTUDO normal (vem do UploadDocumentos) ──
       definirFase(1, FASE.CONFIRMACAO);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -278,6 +338,11 @@ export default function Cascata() {
 
   function handleClicarEtapaNoStepper(numero) {
     if (!etapasConcluidas.includes(numero)) return;
+    // Guard defensivo: se a etapa está concluída mas sem fase definida
+    // (pode ocorrer em edge cases do fluxo de reabertura), corrige agora.
+    if (!fasePorEtapa[numero]) {
+      definirFase(numero, FASE.CONFIRMACAO);
+    }
     setEtapaVisualizada(numero);
   }
 
@@ -321,6 +386,17 @@ export default function Cascata() {
   const mostrarRefazer = etapasConcluidas.includes(etapaVisualizada) && !etapasProcessando.has(etapaVisualizada);
   const estaProcessandoEtapaVisualizada = etapasProcessando.has(etapaVisualizada);
 
+  if (carregandoReabertura) {
+    return (
+      <div className="min-h-screen bg-am-bg flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={28} className="animate-spin text-am-blue" />
+          <p className="text-sm text-am-text-secondary">Carregando estudo...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-am-bg p-5">
       <div className="max-w-4xl mx-auto">
@@ -333,13 +409,23 @@ export default function Cascata() {
             etapasProcessando={etapasProcessando}
             onClicarEtapa={handleClicarEtapaNoStepper}
           />
-          <p className="text-[11px] text-am-text-secondary text-center mt-2">
-            {etapasProcessando.size > 0
-              ? `Etapa ${[...etapasProcessando].join(", ")} processando em segundo plano — você pode navegar livremente`
-              : etapasConcluidas.length > 0
-              ? "Clique em uma etapa já concluída (✓) para revisitá-la"
-              : ""}
-          </p>
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-[11px] text-am-text-secondary">
+              {etapasProcessando.size > 0
+                ? `Etapa ${[...etapasProcessando].join(", ")} processando em segundo plano — você pode navegar livremente`
+                : etapasConcluidas.length > 0
+                ? "Clique em uma etapa já concluída (✓) para revisitá-la"
+                : ""}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={ChevronLeft}
+              onClick={() => navigate("/historico")}
+            >
+              Histórico
+            </Button>
+          </div>
         </Card>
 
         <Card title={TITULO_ETAPA[etapaVisualizada]}>

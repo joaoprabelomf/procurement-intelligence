@@ -46,6 +46,11 @@ export async function criarSessao() {
   return data.session_id;
 }
 
+export async function listarEstudos() {
+  const { data } = await api.get("/estudos");
+  return data.estudos;
+}
+
 export async function obterEstadoSessao(sessionId) {
   const { data } = await api.get(`/sessoes/${sessionId}`);
   return data;

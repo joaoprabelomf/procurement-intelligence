@@ -93,3 +93,36 @@ def listar_sessoes_salvas() -> list[dict]:
             "SELECT session_id, criado_em, atualizado_em FROM estudos ORDER BY atualizado_em DESC"
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def listar_estudos_resumo() -> list[dict]:
+    """
+    Lista estudos com os campos úteis para a tela de histórico.
+
+    Extrai cliente, categoria, micro_categoria e etapa_atual do JSON de cada
+    estudo. Trata estudos incompletos ou antigos com segurança: campos ausentes
+    recebem valores padrão legíveis em vez de erros.
+    """
+    with _DB_LOCK, _conectar() as conn:
+        rows = conn.execute(
+            "SELECT session_id, criado_em, atualizado_em, dados FROM estudos ORDER BY atualizado_em DESC"
+        ).fetchall()
+
+    resultado = []
+    for row in rows:
+        try:
+            dados = json.loads(row["dados"])
+        except (json.JSONDecodeError, TypeError):
+            dados = {}
+
+        resultado.append({
+            "session_id": row["session_id"],
+            "criado_em": row["criado_em"],
+            "atualizado_em": row["atualizado_em"],
+            "cliente": dados.get("cliente") or "Estudo sem nome",
+            "categoria": dados.get("categoria"),
+            "micro_categoria": dados.get("micro_categoria"),
+            "etapa_atual": dados.get("etapa_atual") or 1,
+        })
+
+    return resultado

@@ -4,6 +4,7 @@ import RotaProtegida from "./components/RotaProtegida";
 import Login from "./pages/Login";
 import UploadDocumentos from "./pages/UploadDocumentos";
 import Cascata from "./pages/Cascata";
+import Historico from "./pages/Historico";
 import ResultadoEtapa5 from "./pages/ResultadoEtapa5";
 import ResultadoEtapa7 from "./pages/ResultadoEtapa7";
 import ResultadoEtapa8 from "./pages/ResultadoEtapa8";
@@ -18,6 +19,7 @@ function App() {
             path="/upload"
             element={<RotaProtegida><UploadDocumentos /></RotaProtegida>}
           />
+          <Route path="/historico" element={<Historico />} />
           <Route
             path="/cascata"
             element={<RotaProtegida><Cascata /></RotaProtegida>}

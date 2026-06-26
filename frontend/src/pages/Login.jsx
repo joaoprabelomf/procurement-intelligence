@@ -15,7 +15,7 @@ export default function Login() {
   const [erroEmail, setErroEmail] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [erroServidor, setErroServidor] = useState(null);
-  const { iniciarSessao } = useSessao();
+  const { iniciarSessao, definirEmail } = useSessao();
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -35,6 +35,17 @@ export default function Login() {
     } finally {
       setCarregando(false);
     }
+  }
+
+  function handleAbrirHistorico(e) {
+    e.preventDefault();
+    if (!emailValido(email)) {
+      setErroEmail(true);
+      return;
+    }
+    // Não cria sessão — só registra o email no contexto para desbloquear /historico
+    definirEmail(email);
+    navigate("/historico");
   }
 
   return (
@@ -112,6 +123,14 @@ export default function Login() {
               className="w-full bg-am-navy text-white rounded-md py-2.5 text-sm font-semibold hover:bg-am-navy-light transition disabled:opacity-60"
             >
               {carregando ? "Entrando..." : "Entrar"}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleAbrirHistorico}
+              className="w-full mt-2 border border-am-border-strong text-am-navy rounded-md py-2.5 text-sm font-medium hover:bg-am-bg transition"
+            >
+              Ver estudos anteriores
             </button>
           </form>
 
