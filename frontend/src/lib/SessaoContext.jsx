@@ -15,6 +15,18 @@ export function SessaoProvider({ children }) {
     return id;
   }, []);
 
+  // Registra o email no contexto sem criar sessão — usado antes de ir ao histórico.
+  const definirEmail = useCallback((emailLogin) => {
+    setEmail(emailLogin);
+  }, []);
+
+  // Reabre um estudo já existente no banco sem criar uma sessão nova.
+  // Chamado pela tela de histórico ao clicar em "Reabrir".
+  const reabrirSessao = useCallback((id, emailLogin) => {
+    setSessionId(id);
+    if (emailLogin) setEmail(emailLogin);
+  }, []);
+
   const atualizarEstudo = useCallback(async (id) => {
     const targetId = id || sessionId;
     if (!targetId) return null;
@@ -31,7 +43,7 @@ export function SessaoProvider({ children }) {
 
   return (
     <SessaoContext.Provider
-      value={{ sessionId, email, estudo, iniciarSessao, atualizarEstudo, encerrarSessao }}
+      value={{ sessionId, email, estudo, iniciarSessao, definirEmail, reabrirSessao, atualizarEstudo, encerrarSessao }}
     >
       {children}
     </SessaoContext.Provider>

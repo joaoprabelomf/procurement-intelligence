@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Upload, FileText, X, Loader2 } from "lucide-react";
+import { Upload, FileText, X, Loader2, History } from "lucide-react";
 import TopBar from "../components/TopBar";
 import Card from "../components/Card";
 import Button from "../components/Button";
@@ -112,7 +112,15 @@ export default function UploadDocumentos() {
 
           {erro && <p className="text-sm text-am-danger mt-3">{erro}</p>}
 
-          <div className="mt-5 flex justify-end">
+          <div className="mt-5 flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={History}
+              onClick={() => navigate("/historico")}
+            >
+              Ver estudos anteriores
+            </Button>
             <Button
               variant="primary"
               icon={enviando ? Loader2 : undefined}

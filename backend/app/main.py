@@ -176,6 +176,12 @@ def health():
     }
 
 
+@app.get("/estudos")
+def listar_estudos():
+    """Lista todos os estudos salvos com os campos úteis para a tela de histórico."""
+    return {"estudos": database.listar_estudos_resumo()}
+
+
 @app.get("/pipeline")
 def listar_pipeline():
     """Devolve a declaração das 8 etapas (número, título, se tem checkpoint)."""
