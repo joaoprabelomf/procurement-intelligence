@@ -197,16 +197,19 @@ export default function Cascata() {
         try {
           const dados = await obterEstadoSessao(sessionIdRef.current);
 
-          // Detecta quais etapas já foram concluídas com base nos campos não-nulos
-          const concluidas = [];
-          if (dados.documentos?.length > 0) concluidas.push(1);
-          if (dados.baseline)               concluidas.push(2);
-          if (dados.edital)                 concluidas.push(3);
-          if (dados.propostas_tecnicas?.length > 0) concluidas.push(4);
-          if (dados.comparacao_tecnica)     concluidas.push(5);
-          if (dados.equalizacao_comercial)  concluidas.push(6);
-          if (dados.recomendacoes)          concluidas.push(7);
-          if (dados.estrategia_categoria)   concluidas.push(8);
+          // Detecta quais etapas já foram concluídas.
+          // O fluxo é sempre sequencial, então etapas 1..etapa_atual foram todas percorridas.
+          // Usar etapa_atual como intervalo corrige o caso em que etapa 2 (sem baseline)
+          // ou etapa 3 (sem edital) não atualizam esse campo — mas etapas posteriores o fazem.
+          const etapaMax = dados.etapa_atual ?? 0;
+          const concluidasSet = new Set();
+          for (let n = 1; n <= etapaMax; n++) concluidasSet.add(n);
+
+          // etapa3.py sempre define estudo.edital (mesmo sem doc), mas pode não atualizar
+          // etapa_atual quando não há documento. Se edital existe, etapas 2 e 3 foram rodadas.
+          if (dados.edital) { concluidasSet.add(2); concluidasSet.add(3); }
+
+          const concluidas = [...concluidasSet].sort((a, b) => a - b);
 
           // Usa os mesmos helpers funcionais do fluxo "ao vivo" (marcarConcluida,
           // guardarResultado, definirFase) para garantir consistência — eles usam
@@ -216,7 +219,9 @@ export default function Cascata() {
           // Resultados: a maioria dos componentes busca os próprios dados via sessionId;
           // aqui só preenchemos o que a Cascata lê diretamente (etapas 6 e 8).
           if (dados.documentos?.length > 0) guardarResultado(1, { analise: {} });
-          if (dados.baseline)               guardarResultado(2, { analise: dados.baseline });
+          // Etapa 2 pode não ter baseline (sem doc de baseline) — ainda assim foi concluída;
+          // guardamos um stub para que o componente renderize em CONFIRMACAO.
+          if (concluidasSet.has(2))         guardarResultado(2, { analise: dados.baseline ?? null });
           if (dados.edital)                 guardarResultado(3, { analise: dados.edital });
           if (dados.propostas_tecnicas?.length > 0) guardarResultado(4, { analise: {} });
           if (dados.comparacao_tecnica)     guardarResultado(5, { analise: dados.comparacao_tecnica });
