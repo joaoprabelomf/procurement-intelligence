@@ -19,6 +19,7 @@ import CheckpointEtapa6 from "../components/CheckpointEtapa6";
 import CheckpointRiscoEtapa8 from "../components/CheckpointRiscoEtapa8";
 import { useSessao } from "../lib/SessaoContext";
 import {
+  obterEstadoSessao,
   rodarEtapa2, confirmarAnualizacao,
   rodarEtapa3, rodarEtapa4, rodarEtapa4b, rodarEtapa5,
   precisaCheckpointEtapa6, confirmarCheckpointEtapa6, rodarEtapa6,
@@ -86,6 +87,7 @@ export default function Cascata() {
   const [erroPorEtapa, setErroPorEtapa] = useState({});
   const [carregandoAcao, setCarregandoAcao] = useState(false);
   const [carregandoRefazer, setCarregandoRefazer] = useState(false);
+  const [carregandoReabertura, setCarregandoReabertura] = useState(false);
 
   // sessionId não muda durante a vida da tela, mas guardamos numa ref para
   // os callbacks assíncronos de background sempre lerem o valor mais atual,
@@ -187,9 +189,63 @@ export default function Cascata() {
   }, [marcarProcessando, definirFase, definirErro, guardarResultado, marcarConcluida]);
 
   useEffect(() => {
-    if (Object.keys(resultadosPorEtapa).length === 0) {
+    if (location.state?.reabrindo) {
+      // ── Modo REABERTURA: carrega o estado do estudo existente no banco ──
+      setCarregandoReabertura(true);
+      (async () => {
+        try {
+          const dados = await obterEstadoSessao(sessionIdRef.current);
+
+          // Detecta quais etapas já foram concluídas com base nos campos não-nulos
+          const concluidas = [];
+          if (dados.documentos?.length > 0) concluidas.push(1);
+          if (dados.baseline)                concluidas.push(2);
+          if (dados.edital)                  concluidas.push(3);
+          if (dados.propostas_tecnicas?.length > 0) concluidas.push(4);
+          if (dados.comparacao_tecnica)      concluidas.push(5);
+          if (dados.equalizacao_comercial)   concluidas.push(6);
+          if (dados.recomendacoes)           concluidas.push(7);
+          if (dados.estrategia_categoria)    concluidas.push(8);
+
+          // Reconstrói resultadosPorEtapa com os dados necessários para cada componente.
+          // A maioria dos componentes (BaselineConteudo, EditalConteudo, etc.) busca
+          // seus próprios dados via sessionId — aqui só preenchemos o que é lido
+          // DIRETAMENTE pelo Cascata (principalmente etapas 6 e 8).
+          const resultados = {};
+          if (dados.documentos?.length > 0) resultados[1] = { analise: {} };
+          if (dados.baseline)               resultados[2] = { analise: dados.baseline };
+          if (dados.edital)                 resultados[3] = { analise: dados.edital };
+          if (dados.propostas_tecnicas?.length > 0) resultados[4] = { analise: {} };
+          if (dados.comparacao_tecnica)     resultados[5] = { analise: dados.comparacao_tecnica };
+          if (dados.equalizacao_comercial)  resultados[6] = { analise: dados.equalizacao_comercial };
+          if (dados.recomendacoes)          resultados[7] = { analise: dados.recomendacoes };
+          if (dados.estrategia_categoria)   resultados[8] = { analise: dados.estrategia_categoria };
+
+          // Marca todas as etapas concluídas como CONFIRMACAO
+          const novasFases = {};
+          for (const n of concluidas) {
+            novasFases[n] = FASE.CONFIRMACAO;
+          }
+
+          setEtapasConcluidas(concluidas);
+          setResultadosPorEtapa(resultados);
+          setFasePorEtapa(novasFases);
+
+          // Abre direto na última etapa concluída (ou etapa 1 se nada concluído)
+          const ultimaConcluida = concluidas[concluidas.length - 1] || 1;
+          setEtapaVisualizada(ultimaConcluida);
+        } catch {
+          // Se falhar ao carregar, volta para upload
+          navigate("/upload");
+        } finally {
+          setCarregandoReabertura(false);
+        }
+      })();
+    } else if (Object.keys(resultadosPorEtapa).length === 0) {
+      // ── Modo NOVO ESTUDO sem resultado da etapa 1 — redireciona ──
       navigate("/upload");
     } else {
+      // ── Modo NOVO ESTUDO normal (vem do UploadDocumentos) ──
       definirFase(1, FASE.CONFIRMACAO);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -320,6 +376,17 @@ export default function Cascata() {
   const erro = erroPorEtapa[etapaVisualizada];
   const mostrarRefazer = etapasConcluidas.includes(etapaVisualizada) && !etapasProcessando.has(etapaVisualizada);
   const estaProcessandoEtapaVisualizada = etapasProcessando.has(etapaVisualizada);
+
+  if (carregandoReabertura) {
+    return (
+      <div className="min-h-screen bg-am-bg flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={28} className="animate-spin text-am-blue" />
+          <p className="text-sm text-am-text-secondary">Carregando estudo...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-am-bg p-5">

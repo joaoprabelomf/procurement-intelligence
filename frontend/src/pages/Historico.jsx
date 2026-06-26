@@ -72,7 +72,7 @@ export default function Historico() {
 
   function handleReabrir(estudo) {
     reabrirSessao(estudo.session_id, email);
-    navigate("/cascata");
+    navigate("/cascata", { state: { reabrindo: true } });
   }
 
   function handleNovoEstudo() {
