@@ -1,0 +1,23 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+}
+
+/* "Inter" e "JetBrains Mono" vêm do Google Fonts acima quando a rede
+   permite. Se a rede corporativa bloquear (já aconteceu com outros
+   serviços no projeto), o navegador cai automaticamente nas fontes de
+   sistema da lista — não trava nem fica sem estilo. */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: #D8E8F0;
+  color: #305068;
+}
+
+.font-mono-num {
+  font-family: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
+}

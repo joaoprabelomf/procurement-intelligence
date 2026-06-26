@@ -1,0 +1,66 @@
+# ============================================================
+# Python / Backend
+# ============================================================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Ambiente virtual — nunca sobe para o git
+backend/venv/
+backend/.venv/
+venv/
+.venv/
+
+# Variáveis de ambiente (chaves de API, senhas — NUNCA no git)
+.env
+.env.*
+*.env
+
+# Arquivos temporários do Python
+*.log
+*.sqlite3
+*.db
+
+# ============================================================
+# Node.js / Frontend
+# ============================================================
+node_modules/
+frontend/node_modules/
+
+# Build do Vite/React (gerado a partir do código-fonte)
+frontend/dist/
+frontend/build/
+
+# Cache do Vite
+frontend/.vite/
+frontend/.cache/
+
+# ============================================================
+# PPTs temporários gerados pelo sistema
+# ============================================================
+procurement_ppt_saida/
+*.pptx
+
+# ============================================================
+# IDEs e SO
+# ============================================================
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================================
+# Logs de sistema
+# ============================================================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
