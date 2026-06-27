@@ -15,11 +15,10 @@ export default function Login() {
   const [erroEmail, setErroEmail] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [erroServidor, setErroServidor] = useState(null);
-  const { iniciarSessao, definirEmail } = useSessao();
+  const { iniciarSessao } = useSessao();
   const navigate = useNavigate();
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function autenticar(destino) {
     if (!emailValido(email)) {
       setErroEmail(true);
       return;
@@ -28,8 +27,8 @@ export default function Login() {
     setErroServidor(null);
     setCarregando(true);
     try {
-      await iniciarSessao(email);
-      navigate("/upload");
+      await iniciarSessao(email, senha);
+      navigate(destino);
     } catch (err) {
       setErroServidor(extrairMensagemErro(err));
     } finally {
@@ -37,15 +36,14 @@ export default function Login() {
     }
   }
 
+  function handleSubmit(e) {
+    e.preventDefault();
+    autenticar("/upload");
+  }
+
   function handleAbrirHistorico(e) {
     e.preventDefault();
-    if (!emailValido(email)) {
-      setErroEmail(true);
-      return;
-    }
-    // Não cria sessão — só registra o email no contexto para desbloquear /historico
-    definirEmail(email);
-    navigate("/historico");
+    autenticar("/historico");
   }
 
   return (

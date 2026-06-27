@@ -33,13 +33,18 @@ class SessaoNaoEncontrada(KeyError):
     pass
 
 
-def criar_sessao() -> str:
-    """Cria uma nova sessão de estudo vazia, salva no banco e devolve o session_id."""
+def criar_sessao(time_id: int) -> str:
+    """
+    Cria uma nova sessão de estudo vazia, associa ao time e salva no banco.
+
+    time_id é registrado no INSERT inicial do banco e não é sobrescrito pelo
+    auto-save do middleware — a posse do estudo fica permanente.
+    """
     session_id = str(uuid.uuid4())
     estudo = Estudo()
     with _LOCK:
         _SESSOES[session_id] = estudo
-    database.salvar_estudo(session_id, estudo)
+    database.salvar_estudo(session_id, estudo, time_id=time_id)
     return session_id
 
 

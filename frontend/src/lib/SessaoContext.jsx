@@ -1,27 +1,38 @@
 import { createContext, useContext, useState, useCallback } from "react";
-import { criarSessao as criarSessaoApi, obterEstadoSessao } from "../lib/api";
+import {
+  criarSessao as criarSessaoApi,
+  obterEstadoSessao,
+  fazerLogin,
+  setStoredEmail,
+  clearToken,
+  clearStoredEmail,
+  getStoredEmail,
+} from "../lib/api";
 
 const SessaoContext = createContext(null);
 
 export function SessaoProvider({ children }) {
   const [sessionId, setSessionId] = useState(null);
-  const [email, setEmail] = useState(null);
+  const [email, setEmail] = useState(() => getStoredEmail());
   const [estudo, setEstudo] = useState(null);
 
-  const iniciarSessao = useCallback(async (emailLogin) => {
+  // Autentica no backend e persiste o token + email no localStorage.
+  // Não cria sessão de estudo — isso fica para criarSessaoDeEstudo().
+  const iniciarSessao = useCallback(async (emailLogin, senha) => {
+    await fazerLogin(emailLogin, senha);
+    setStoredEmail(emailLogin);
+    setEmail(emailLogin);
+  }, []);
+
+  // Cria uma nova sessão de estudo no backend (POST /sessoes).
+  // Chamado no momento do upload, não no login.
+  const criarSessaoDeEstudo = useCallback(async () => {
     const id = await criarSessaoApi();
     setSessionId(id);
-    setEmail(emailLogin);
     return id;
   }, []);
 
-  // Registra o email no contexto sem criar sessão — usado antes de ir ao histórico.
-  const definirEmail = useCallback((emailLogin) => {
-    setEmail(emailLogin);
-  }, []);
-
   // Reabre um estudo já existente no banco sem criar uma sessão nova.
-  // Chamado pela tela de histórico ao clicar em "Reabrir".
   const reabrirSessao = useCallback((id, emailLogin) => {
     setSessionId(id);
     if (emailLogin) setEmail(emailLogin);
@@ -35,6 +46,14 @@ export function SessaoProvider({ children }) {
     return dados;
   }, [sessionId]);
 
+  const logout = useCallback(() => {
+    clearToken();
+    clearStoredEmail();
+    setSessionId(null);
+    setEmail(null);
+    setEstudo(null);
+  }, []);
+
   const encerrarSessao = useCallback(() => {
     setSessionId(null);
     setEmail(null);
@@ -43,7 +62,17 @@ export function SessaoProvider({ children }) {
 
   return (
     <SessaoContext.Provider
-      value={{ sessionId, email, estudo, iniciarSessao, definirEmail, reabrirSessao, atualizarEstudo, encerrarSessao }}
+      value={{
+        sessionId,
+        email,
+        estudo,
+        iniciarSessao,
+        criarSessaoDeEstudo,
+        reabrirSessao,
+        atualizarEstudo,
+        logout,
+        encerrarSessao,
+      }}
     >
       {children}
     </SessaoContext.Provider>

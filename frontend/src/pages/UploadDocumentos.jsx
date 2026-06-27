@@ -12,7 +12,7 @@ export default function UploadDocumentos() {
   const [arrastando, setArrastando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState(null);
-  const { sessionId } = useSessao();
+  const { sessionId, criarSessaoDeEstudo } = useSessao();
   const navigate = useNavigate();
 
   const adicionarArquivos = useCallback((novosArquivos) => {
@@ -39,7 +39,9 @@ export default function UploadDocumentos() {
     setEnviando(true);
     setErro(null);
     try {
-      const resultado = await uploadEtapa1(sessionId, arquivos);
+      // sessionId é null após reload da página — cria uma sessão nova sob demanda
+      const id = sessionId ?? await criarSessaoDeEstudo();
+      const resultado = await uploadEtapa1(id, arquivos);
       navigate("/cascata", { state: { resultadoEtapa1: resultado } });
     } catch (err) {
       setErro(extrairMensagemErro(err, "upload"));

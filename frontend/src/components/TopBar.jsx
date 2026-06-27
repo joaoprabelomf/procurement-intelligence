@@ -1,5 +1,8 @@
+import { useNavigate } from "react-router-dom";
+import { LogOut, ShieldCheck } from "lucide-react";
 import logoAm from "../assets/logo-am.png";
 import { useSessao } from "../lib/SessaoContext";
+import { getTokenPayload } from "../lib/api";
 
 function iniciaisDoEmail(email) {
   if (!email) return "?";
@@ -8,7 +11,15 @@ function iniciaisDoEmail(email) {
 }
 
 export default function TopBar({ cliente, caso }) {
-  const { email } = useSessao();
+  const { email, logout } = useSessao();
+  const navigate = useNavigate();
+  const isAdmin = getTokenPayload()?.papel === "admin";
+
+  function handleLogout() {
+    logout();
+    navigate("/login");
+  }
+
   return (
     <div className="bg-am-navy rounded-lg px-5 py-3 flex items-center justify-between mb-4">
       <div className="flex items-center gap-3">
@@ -20,13 +31,29 @@ export default function TopBar({ cliente, caso }) {
           </span>
         )}
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         {cliente && (
           <span className="text-am-blue-light text-xs">{cliente}</span>
+        )}
+        {isAdmin && (
+          <button
+            onClick={() => navigate("/admin")}
+            title="Administração"
+            className="text-am-blue-light hover:text-white transition"
+          >
+            <ShieldCheck size={15} />
+          </button>
         )}
         <div className="w-7 h-7 rounded-full bg-am-blue flex items-center justify-center text-white text-xs font-semibold">
           {iniciaisDoEmail(email)}
         </div>
+        <button
+          onClick={handleLogout}
+          title="Sair"
+          className="text-am-blue-light hover:text-white transition"
+        >
+          <LogOut size={15} />
+        </button>
       </div>
     </div>
   );
