@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Navigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { History, FolderOpen, Plus, RefreshCw } from "lucide-react";
 import TopBar from "../components/TopBar";
 import Card from "../components/Card";
@@ -47,11 +47,6 @@ export default function Historico() {
   const [estudos, setEstudos] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
-
-  // Requer login (email definido no contexto)
-  if (!email) {
-    return <Navigate to="/login" replace />;
-  }
 
   useEffect(() => {
     carregar();

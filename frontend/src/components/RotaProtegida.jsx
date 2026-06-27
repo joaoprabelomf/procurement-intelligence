@@ -1,9 +1,8 @@
 import { Navigate } from "react-router-dom";
-import { useSessao } from "../lib/SessaoContext";
+import { getToken } from "../lib/api";
 
 export default function RotaProtegida({ children }) {
-  const { sessionId } = useSessao();
-  if (!sessionId) {
+  if (!getToken()) {
     return <Navigate to="/login" replace />;
   }
   return children;

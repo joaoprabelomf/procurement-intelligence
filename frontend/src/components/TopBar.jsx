@@ -1,3 +1,5 @@
+import { useNavigate } from "react-router-dom";
+import { LogOut } from "lucide-react";
 import logoAm from "../assets/logo-am.png";
 import { useSessao } from "../lib/SessaoContext";
 
@@ -8,7 +10,14 @@ function iniciaisDoEmail(email) {
 }
 
 export default function TopBar({ cliente, caso }) {
-  const { email } = useSessao();
+  const { email, logout } = useSessao();
+  const navigate = useNavigate();
+
+  function handleLogout() {
+    logout();
+    navigate("/login");
+  }
+
   return (
     <div className="bg-am-navy rounded-lg px-5 py-3 flex items-center justify-between mb-4">
       <div className="flex items-center gap-3">
@@ -20,13 +29,20 @@ export default function TopBar({ cliente, caso }) {
           </span>
         )}
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         {cliente && (
           <span className="text-am-blue-light text-xs">{cliente}</span>
         )}
         <div className="w-7 h-7 rounded-full bg-am-blue flex items-center justify-center text-white text-xs font-semibold">
           {iniciaisDoEmail(email)}
         </div>
+        <button
+          onClick={handleLogout}
+          title="Sair"
+          className="text-am-blue-light hover:text-white transition"
+        >
+          <LogOut size={15} />
+        </button>
       </div>
     </div>
   );

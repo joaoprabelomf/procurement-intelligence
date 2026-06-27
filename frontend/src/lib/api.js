@@ -12,6 +12,53 @@ export const api = axios.create({
   baseURL: API_URL,
 });
 
+// ---------------------------------------------------------------------------
+// Token helpers — localStorage
+// ---------------------------------------------------------------------------
+
+const TOKEN_KEY = "am_auth_token";
+const EMAIL_KEY = "am_user_email";
+
+export function getToken() { return localStorage.getItem(TOKEN_KEY); }
+export function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
+export function clearToken() { localStorage.removeItem(TOKEN_KEY); }
+export function getStoredEmail() { return localStorage.getItem(EMAIL_KEY); }
+export function setStoredEmail(e) { localStorage.setItem(EMAIL_KEY, e); }
+export function clearStoredEmail() { localStorage.removeItem(EMAIL_KEY); }
+
+// Injeta o token JWT em todas as chamadas
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+// 401 fora do endpoint de login → limpa token e redireciona para /login
+api.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    if (
+      err.response?.status === 401 &&
+      !err.config?.url?.includes("/auth/login")
+    ) {
+      clearToken();
+      clearStoredEmail();
+      window.location.replace("/login");
+    }
+    return Promise.reject(err);
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+export async function fazerLogin(email, senha) {
+  const { data } = await api.post("/auth/login", { email, senha });
+  setToken(data.access_token);
+  return data.access_token;
+}
+
 // Extrai uma mensagem de erro legível de qualquer resposta de erro da API.
 // O backend sempre devolve { detail: "..." } nos erros (ver main.py),
 // então isso cobre os casos esperados. Os casos de rede são distinguidos:

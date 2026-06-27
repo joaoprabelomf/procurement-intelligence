@@ -19,7 +19,7 @@ function App() {
             path="/upload"
             element={<RotaProtegida><UploadDocumentos /></RotaProtegida>}
           />
-          <Route path="/historico" element={<Historico />} />
+          <Route path="/historico" element={<RotaProtegida><Historico /></RotaProtegida>} />
           <Route
             path="/cascata"
             element={<RotaProtegida><Cascata /></RotaProtegida>}
