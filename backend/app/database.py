@@ -272,3 +272,29 @@ def listar_estudos_resumo() -> list[dict]:
         })
 
     return resultado
+
+
+# ---------------------------------------------------------------------------
+# Usuários — consultas usadas pela auth (Parte 2+)
+# ---------------------------------------------------------------------------
+
+def buscar_usuario_por_email(email: str) -> dict | None:
+    """
+    Devolve o dict do usuário (id, email, senha_hash, time_id, papel, ativo)
+    ou None se o email não existir no banco.
+
+    Usado pelo endpoint POST /auth/login para verificar credenciais.
+    Retorna sempre todos os campos necessários para a autenticação,
+    incluindo senha_hash (para verificação bcrypt) e ativo (para rejeitar
+    contas desativadas antes de verificar a senha).
+    """
+    with _DB_LOCK, _conectar() as conn:
+        row = conn.execute(
+            """
+            SELECT id, email, senha_hash, time_id, papel, ativo
+            FROM usuarios
+            WHERE email = ?
+            """,
+            (email,),
+        ).fetchone()
+    return dict(row) if row else None

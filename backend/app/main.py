@@ -36,7 +36,10 @@ from .schemas import (
     Etapa8Request,
     Etapa8RiscoConfirmacaoRequest,
     CorrecaoGenericaRequest,
+    LoginRequest,
+    TokenResponse,
 )
+from . import auth
 from . import etapa5_para_ppt, etapa6_para_ppt, etapa7_para_ppt, etapa8_para_ppt
 from . import correcao_generica
 from . import propostas_view
@@ -77,8 +80,9 @@ app = FastAPI(
 
 @app.on_event("startup")
 def startup():
-    """Inicializa o banco SQLite na subida do servidor."""
+    """Inicializa o banco SQLite e valida configurações obrigatórias."""
     database.inicializar_banco()
+    auth.verificar_jwt_secret_na_startup()
 
 
 @app.middleware("http")
@@ -161,6 +165,42 @@ async def handler_sessao_nao_encontrada(request, exc: sessions.SessaoNaoEncontra
 def _get_estudo(session_id: str):
     """Helper: busca o Estudo da sessão ou levanta 404 com mensagem clara."""
     return sessions.obter_estudo(session_id)
+
+
+# ---------------------------------------------------------------------------
+# Auth — login e emissão de JWT (Parte 2)
+# ---------------------------------------------------------------------------
+
+@app.post("/auth/login", response_model=TokenResponse)
+def login(body: LoginRequest):
+    """
+    Autentica um usuário e devolve um JWT com expiração de 8 horas.
+
+    Regras de segurança:
+    - Usuário inexistente, senha errada e conta inativa → 401 com mensagem
+      GENÉRICA (não revelamos qual dos três falhou, para não vazar informação).
+    - A verificação de senha usa bcrypt.checkpw — tempo constante, resistente
+      a timing attacks.
+    - Em nenhum momento a senha em texto puro é logada ou armazenada.
+    """
+    usuario = database.buscar_usuario_por_email(body.email)
+
+    # Resposta genérica: qualquer falha vira o mesmo 401
+    _ERRO_401 = HTTPException(status_code=401, detail="Email ou senha inválidos.")
+
+    if usuario is None:
+        raise _ERRO_401
+    if not usuario["ativo"]:
+        raise _ERRO_401
+    if not database.verificar_senha(body.senha, usuario["senha_hash"]):
+        raise _ERRO_401
+
+    token = auth.criar_token(
+        usuario_id=usuario["id"],
+        time_id=usuario["time_id"],
+        papel=usuario["papel"],
+    )
+    return TokenResponse(access_token=token)
 
 
 # ---------------------------------------------------------------------------

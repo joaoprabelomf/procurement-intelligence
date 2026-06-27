@@ -67,6 +67,20 @@ class CorrecaoGenericaRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Auth — login e token (Parte 2)
+# ---------------------------------------------------------------------------
+
+class LoginRequest(BaseModel):
+    email: str
+    senha: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+# ---------------------------------------------------------------------------
 # Resposta genérica de erro (corpo do HTTPException)
 # ---------------------------------------------------------------------------
 
