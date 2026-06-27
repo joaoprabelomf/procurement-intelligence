@@ -355,6 +355,151 @@ def desativar_usuario(usuario_id: int, time_id: int) -> bool:
     return n > 0
 
 
+# ---------------------------------------------------------------------------
+# Memória RAG — recuperação de casos similares (Degrau 3, Parte 1)
+# ---------------------------------------------------------------------------
+
+def _normalizar_micro_categoria(valor: str) -> str:
+    """Lowercase + strip para comparação case-insensitive de micro_categoria."""
+    return (valor or "").strip().lower()
+
+
+def _extrair_savings_texto(equalizacao: dict) -> str | None:
+    """
+    Tenta extrair uma frase curta de savings da equalização comercial.
+    Retorna None se não houver dados suficientes — nunca levanta exceção.
+    """
+    try:
+        resumo = equalizacao.get("resumo_savings") or equalizacao.get("resumo")
+        if isinstance(resumo, str) and resumo.strip():
+            return resumo.strip()[:250]
+        # Fallback: calcula range de savings_percent dos fornecedores
+        fornecedores = equalizacao.get("fornecedores") or []
+        savings = [
+            f.get("savings_percent") or f.get("saving_percent")
+            for f in fornecedores
+            if isinstance(f, dict)
+        ]
+        validos = [s for s in savings if isinstance(s, (int, float))]
+        if validos:
+            return f"Savings: {min(validos):.1f}% a {max(validos):.1f}% vs. baseline"
+    except Exception:
+        pass
+    return None
+
+
+def montar_resumo_de_caso(dados: dict) -> dict | None:
+    """
+    Extrai campos relevantes de um Estudo serializado para uso como referência
+    histórica. Retorna None se os dados forem insuficientes ou malformados.
+
+    Intencionalmente limitado a informações agregadas/narrativas — nunca
+    inclui textos brutos de documentos.
+    """
+    try:
+        micro_cat = (dados.get("micro_categoria") or "").strip()
+        if not micro_cat:
+            return None  # sem micro_categoria confirmada, o caso não serve de referência
+
+        baseline = dados.get("baseline") or {}
+        comercial = baseline.get("comercial") or {}
+        should_cost = baseline.get("should_cost") or {}
+        tco = baseline.get("tco") or {}
+        equalizacao = dados.get("equalizacao_comercial") or {}
+        estrategia = dados.get("estrategia_categoria") or {}
+
+        drivers = [
+            d.get("driver") for d in should_cost.get("drivers_principais", [])
+            if isinstance(d, dict) and d.get("driver")
+        ][:5]
+
+        tco_fatores = [
+            f.get("fator") for f in tco.get("fatores_nao_considerados", [])
+            if isinstance(f, dict) and f.get("fator")
+        ][:5]
+
+        resumo = {
+            "micro_categoria": micro_cat,
+            "preco_anual_total": comercial.get("preco_anual_total"),
+            "pareto": comercial.get("pareto"),
+            "should_cost_sintese": should_cost.get("sintese"),
+            "drivers_principais": drivers,
+            "tco_fatores": tco_fatores,
+            "savings_referencia": _extrair_savings_texto(equalizacao),
+            "kraljic_quadrante": estrategia.get("quadrante"),
+            "kraljic_resumo": estrategia.get("resumo_posicao"),
+        }
+
+        # Descarta casos sem dados úteis para a Etapa 2
+        if not any([
+            resumo["preco_anual_total"],
+            resumo["pareto"],
+            resumo["should_cost_sintese"],
+            resumo["drivers_principais"],
+        ]):
+            return None
+
+        return resumo
+    except Exception as exc:
+        logger.debug("[RAG] montar_resumo_de_caso falhou (estudo incompleto): %s", exc)
+        return None
+
+
+def buscar_casos_similares(
+    micro_categoria: str,
+    time_id: int,
+    excluir_session_id: str,
+    limite: int = 5,
+) -> list[dict]:
+    """
+    Recupera estudos do mesmo time com a mesma micro_categoria (normalizada).
+    Retorna lista de dicts com campos-resumo — nunca levanta exceção.
+
+    Sempre filtra por time_id (isolamento Degrau 2).
+    Tolera estudos com JSON corrompido ou campos ausentes (pula silenciosamente).
+    """
+    micro_normalizada = _normalizar_micro_categoria(micro_categoria)
+    if not micro_normalizada:
+        return []
+
+    try:
+        with _DB_LOCK, _conectar() as conn:
+            rows = conn.execute(
+                """
+                SELECT session_id, dados
+                FROM estudos
+                WHERE time_id = ?
+                  AND session_id != ?
+                ORDER BY atualizado_em DESC
+                LIMIT 50
+                """,
+                (time_id, excluir_session_id),
+            ).fetchall()
+    except Exception as exc:
+        logger.warning("[RAG] Falha ao consultar banco para casos similares: %s", exc)
+        return []
+
+    casos = []
+    for row in rows:
+        try:
+            dados = json.loads(row["dados"])
+        except (json.JSONDecodeError, TypeError):
+            continue  # JSON corrompido — pula sem levantar
+
+        micro_do_caso = _normalizar_micro_categoria(dados.get("micro_categoria") or "")
+        if micro_do_caso != micro_normalizada:
+            continue
+
+        resumo = montar_resumo_de_caso(dados)
+        if resumo:
+            casos.append({"session_id": row["session_id"][:8] + "…", **resumo})
+
+        if len(casos) >= limite:
+            break
+
+    return casos
+
+
 def buscar_usuario_por_email(email: str) -> dict | None:
     """
     Devolve o dict do usuário (id, email, senha_hash, time_id, papel, ativo)
