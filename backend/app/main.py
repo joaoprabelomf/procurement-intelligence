@@ -16,6 +16,7 @@ import asyncio
 from io import BytesIO
 import os
 import tempfile
+from typing import Annotated
 
 import anthropic
 from fastapi import FastAPI, Request, UploadFile, HTTPException, File, Query
@@ -40,6 +41,24 @@ from .schemas import (
     TokenResponse,
 )
 from . import auth
+from fastapi import Depends
+
+# ---------------------------------------------------------------------------
+# Aliases de dependency — aplicados nas rotas que exigem autenticação.
+#
+# _Auth          → valida token; usado em rotas sem session_id (POST /sessoes,
+#                  GET /estudos).
+# _AuthSessao    → valida token E verifica que o estudo pertence ao time do
+#                  usuário; usado em todas as rotas /sessoes/{session_id}/...
+#
+# O parâmetro é declarado nas funções de rota como `_: _AuthSessao` (underscore
+# = "usado só pelo efeito colateral de enforçar auth"; FastAPI não o exige no
+# corpo da função).  Para as raras rotas onde o time_id é necessário no corpo
+# (POST /sessoes, GET /estudos), usa-se `usuario: _Auth`.
+# ---------------------------------------------------------------------------
+_Auth = Annotated[dict, Depends(auth.get_usuario_atual)]
+_AuthSessao = Annotated[dict, Depends(auth.get_usuario_com_acesso_a_sessao)]
+
 from . import etapa5_para_ppt, etapa6_para_ppt, etapa7_para_ppt, etapa8_para_ppt
 from . import correcao_generica
 from . import propostas_view
@@ -217,9 +236,9 @@ def health():
 
 
 @app.get("/estudos")
-def listar_estudos():
-    """Lista todos os estudos salvos com os campos úteis para a tela de histórico."""
-    return {"estudos": database.listar_estudos_resumo()}
+def listar_estudos(usuario: _Auth):
+    """Lista estudos do time do usuário autenticado."""
+    return {"estudos": database.listar_estudos_resumo(time_id=usuario["time_id"])}
 
 
 @app.get("/pipeline")
@@ -233,14 +252,14 @@ def listar_pipeline():
 # ---------------------------------------------------------------------------
 
 @app.post("/sessoes", response_model=SessaoCriada)
-def criar_sessao():
-    """Cria uma nova sessão de estudo vazia. Chamado depois do login."""
-    session_id = sessions.criar_sessao()
+def criar_sessao_rota(usuario: _Auth):
+    """Cria uma nova sessão de estudo vazia, associada ao time do usuário."""
+    session_id = sessions.criar_sessao(time_id=usuario["time_id"])
     return SessaoCriada(session_id=session_id)
 
 
 @app.get("/sessoes/{session_id}")
-def obter_estado_sessao(session_id: str):
+def obter_estado_sessao(session_id: str, _: _AuthSessao):
     """Devolve o estado completo do Estudo — usado para retomar onde parou."""
     estudo = _get_estudo(session_id)
     return {
@@ -272,7 +291,7 @@ def obter_estado_sessao(session_id: str):
 
 
 @app.delete("/sessoes/{session_id}")
-def encerrar_sessao(session_id: str):
+def encerrar_sessao(session_id: str, _: _AuthSessao):
     sessions.encerrar_sessao(session_id)
     return {"status": "encerrada"}
 
@@ -282,7 +301,7 @@ def encerrar_sessao(session_id: str):
 # ---------------------------------------------------------------------------
 
 @app.post("/sessoes/{session_id}/etapa1/upload")
-async def rodar_etapa1_upload(session_id: str, arquivos: list[UploadFile] = File(...)):
+async def rodar_etapa1_upload(session_id: str, _: _AuthSessao, arquivos: list[UploadFile] = File(...)):
     """
     Recebe os arquivos enviados pelo usuário (edital, baseline, propostas),
     lê o conteúdo de cada um (PDF/Word/Excel/txt) e roda a classificação.
@@ -312,7 +331,7 @@ async def rodar_etapa1_upload(session_id: str, arquivos: list[UploadFile] = File
 
 
 @app.post("/sessoes/{session_id}/etapa1/correcao")
-def aplicar_correcao_etapa1(session_id: str, body: Etapa1CorrecaoRequest):
+def aplicar_correcao_etapa1(session_id: str, body: Etapa1CorrecaoRequest, _: _AuthSessao):
     """Correção estruturada (caminho antigo — edição direta, sem decidir intenção)."""
     estudo = _get_estudo(session_id)
     checkpoint = etapa1.aplicar_correcao_etapa1(estudo, body.correcao)
@@ -320,7 +339,7 @@ def aplicar_correcao_etapa1(session_id: str, body: Etapa1CorrecaoRequest):
 
 
 @app.post("/sessoes/{session_id}/etapa1/chat")
-def chat_etapa1(session_id: str, body: Etapa1ChatRequest):
+def chat_etapa1(session_id: str, body: Etapa1ChatRequest, _: _AuthSessao):
     """
     Chat livre da Etapa 1: o usuário fala em linguagem natural (editar,
     perguntar, ou confirmar) e o Claude decide a intenção. Usado pela
@@ -332,28 +351,28 @@ def chat_etapa1(session_id: str, body: Etapa1ChatRequest):
 
 
 @app.get("/sessoes/{session_id}/etapa1/resumo-executivo")
-def resumo_executivo_etapa1_rota(session_id: str):
+def resumo_executivo_etapa1_rota(session_id: str, _: _AuthSessao):
     """KPIs: cliente, categoria + modelo de precificação, nº de proponentes, nº de pontos de atenção."""
     estudo = _get_estudo(session_id)
     return triagem_view.resumo_executivo_triagem(estudo)
 
 
 @app.get("/sessoes/{session_id}/etapa1/cenario-atual")
-def cenario_atual_etapa1_rota(session_id: str):
+def cenario_atual_etapa1_rota(session_id: str, _: _AuthSessao):
     """Documentos do cenário atual (As Is): edital e baseline, cada um podendo estar ausente."""
     estudo = _get_estudo(session_id)
     return triagem_view.cenario_atual_triagem(estudo)
 
 
 @app.get("/sessoes/{session_id}/etapa1/proponentes")
-def proponentes_etapa1_rota(session_id: str):
+def proponentes_etapa1_rota(session_id: str, _: _AuthSessao):
     """Lista de proponentes com seus arquivos (técnica/comercial/combinada) — sem paginação, poucos por natureza."""
     estudo = _get_estudo(session_id)
     return {"itens": triagem_view.proponentes_triagem(estudo)}
 
 
 @app.get("/sessoes/{session_id}/etapa1/pontos-atencao")
-def pontos_atencao_etapa1_rota(session_id: str):
+def pontos_atencao_etapa1_rota(session_id: str, _: _AuthSessao):
     """Lista de faltantes/alertas registrados na classificação."""
     estudo = _get_estudo(session_id)
     return {"itens": triagem_view.pontos_atencao_triagem(estudo)}
@@ -364,27 +383,27 @@ def pontos_atencao_etapa1_rota(session_id: str):
 # ---------------------------------------------------------------------------
 
 @app.post("/sessoes/{session_id}/etapa2/rodar")
-def rodar_etapa2_rota(session_id: str):
+def rodar_etapa2_rota(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     return etapa2.rodar_etapa2(estudo)
 
 
 @app.post("/sessoes/{session_id}/etapa2/confirmar-anualizacao")
-def confirmar_anualizacao_rota(session_id: str, body: Etapa2AnualizacaoRequest):
+def confirmar_anualizacao_rota(session_id: str, body: Etapa2AnualizacaoRequest, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     msg = etapa2.confirmar_periodo_anualização(estudo, body.periodo)
     return {"mensagem": msg}
 
 
 @app.get("/sessoes/{session_id}/etapa2/resumo-executivo")
-def resumo_executivo_etapa2_rota(session_id: str):
+def resumo_executivo_etapa2_rota(session_id: str, _: _AuthSessao):
     """KPIs: gasto anual, micro-categoria, fatores de TCO, razoabilidade do modelo."""
     estudo = _get_estudo(session_id)
     return baseline_view.resumo_executivo_baseline(estudo)
 
 
 @app.get("/sessoes/{session_id}/etapa2/detalhe")
-def detalhe_etapa2_rota(session_id: str):
+def detalhe_etapa2_rota(session_id: str, _: _AuthSessao):
     """Conteúdo completo do baseline (Pareto, fatores de TCO, drivers de should-cost) — sem paginação."""
     estudo = _get_estudo(session_id)
     return baseline_view.detalhe_baseline(estudo)
@@ -395,7 +414,7 @@ def detalhe_etapa2_rota(session_id: str):
 # ---------------------------------------------------------------------------
 
 @app.post("/sessoes/{session_id}/etapa3/rodar")
-def rodar_etapa3_rota(session_id: str):
+def rodar_etapa3_rota(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     return etapa3.rodar_etapa3(estudo)
 
@@ -403,6 +422,7 @@ def rodar_etapa3_rota(session_id: str):
 @app.get("/sessoes/{session_id}/etapa3/requisitos")
 def consultar_requisitos_etapa3_rota(
     session_id: str,
+    _: _AuthSessao,
     pagina: int = Query(1, ge=1),
     tamanho_pagina: int = Query(20, ge=1, le=200),
     busca: str = Query(""),
@@ -419,14 +439,14 @@ def consultar_requisitos_etapa3_rota(
 
 
 @app.get("/sessoes/{session_id}/etapa3/resumo-executivo")
-def resumo_executivo_etapa3_rota(session_id: str):
+def resumo_executivo_etapa3_rota(session_id: str, _: _AuthSessao):
     """KPIs: total de requisitos, mandatórios de peso Alto, tamanho do delta de escopo."""
     estudo = _get_estudo(session_id)
     return edital_view.resumo_executivo_edital(estudo)
 
 
 @app.get("/sessoes/{session_id}/etapa3/delta-escopo")
-def detalhe_delta_escopo_etapa3_rota(session_id: str):
+def detalhe_delta_escopo_etapa3_rota(session_id: str, _: _AuthSessao):
     """Conteúdo completo do delta de escopo (adicionados/removidos/modificados vs baseline)."""
     estudo = _get_estudo(session_id)
     return edital_view.detalhe_delta_escopo(estudo)
@@ -437,7 +457,7 @@ def detalhe_delta_escopo_etapa3_rota(session_id: str):
 # ---------------------------------------------------------------------------
 
 @app.post("/sessoes/{session_id}/etapa4/rodar")
-def rodar_etapa4_rota(session_id: str):
+def rodar_etapa4_rota(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     return etapa4.rodar_etapa4(estudo)
 
@@ -445,6 +465,7 @@ def rodar_etapa4_rota(session_id: str):
 @app.get("/sessoes/{session_id}/etapa4/propostas")
 def consultar_propostas_etapa4_rota(
     session_id: str,
+    _: _AuthSessao,
     pagina: int = Query(1, ge=1),
     tamanho_pagina: int = Query(20, ge=1, le=200),
     busca: str = Query(""),
@@ -471,14 +492,14 @@ def consultar_propostas_etapa4_rota(
 
 
 @app.get("/sessoes/{session_id}/etapa4/resumo-executivo")
-def resumo_executivo_etapa4_rota(session_id: str):
+def resumo_executivo_etapa4_rota(session_id: str, _: _AuthSessao):
     """KPIs agregados sobre TODAS as propostas, independente de paginação/filtro."""
     estudo = _get_estudo(session_id)
     return propostas_view.resumo_executivo_agregado(estudo)
 
 
 @app.get("/sessoes/{session_id}/etapa4/propostas/{fornecedor}")
-def detalhe_proposta_etapa4_rota(session_id: str, fornecedor: str):
+def detalhe_proposta_etapa4_rota(session_id: str, fornecedor: str, _: _AuthSessao):
     """Detalhe completo (requisito a requisito) de UM fornecedor — carregado sob demanda."""
     estudo = _get_estudo(session_id)
     detalhe = propostas_view.detalhe_de_um_fornecedor(estudo, fornecedor)
@@ -492,7 +513,7 @@ def detalhe_proposta_etapa4_rota(session_id: str, fornecedor: str):
 # ---------------------------------------------------------------------------
 
 @app.post("/sessoes/{session_id}/etapa4b/rodar")
-def rodar_etapa4b_rota(session_id: str):
+def rodar_etapa4b_rota(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     return etapa4b.rodar_etapa4b(estudo)
 
@@ -502,7 +523,7 @@ def rodar_etapa4b_rota(session_id: str):
 # ---------------------------------------------------------------------------
 
 @app.post("/sessoes/{session_id}/etapa5/rodar")
-def rodar_etapa5_rota(session_id: str):
+def rodar_etapa5_rota(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     return etapa5.rodar_etapa5(estudo)
 
@@ -510,6 +531,7 @@ def rodar_etapa5_rota(session_id: str):
 @app.get("/sessoes/{session_id}/etapa5/fornecedores")
 def consultar_comparacao_etapa5_rota(
     session_id: str,
+    _: _AuthSessao,
     pagina: int = Query(1, ge=1),
     tamanho_pagina: int = Query(20, ge=1, le=200),
     busca: str = Query(""),
@@ -529,14 +551,14 @@ def consultar_comparacao_etapa5_rota(
 
 
 @app.get("/sessoes/{session_id}/etapa5/resumo-executivo")
-def resumo_executivo_etapa5_rota(session_id: str):
+def resumo_executivo_etapa5_rota(session_id: str, _: _AuthSessao):
     """KPIs: nº de fornecedores, é comparação real, fornecedores com gap, pior fornecedor."""
     estudo = _get_estudo(session_id)
     return comparacao_view.resumo_executivo_comparacao(estudo)
 
 
 @app.get("/sessoes/{session_id}/etapa5/fornecedores/{fornecedor}")
-def detalhe_fornecedor_etapa5_rota(session_id: str, fornecedor: str):
+def detalhe_fornecedor_etapa5_rota(session_id: str, fornecedor: str, _: _AuthSessao):
     """Matriz completa de requisitos de UM fornecedor — carregada sob demanda ao expandir a linha."""
     estudo = _get_estudo(session_id)
     detalhe = comparacao_view.matriz_completa_de_um_fornecedor(estudo, fornecedor)
@@ -546,7 +568,7 @@ def detalhe_fornecedor_etapa5_rota(session_id: str, fornecedor: str):
 
 
 @app.get("/sessoes/{session_id}/etapa5/word")
-def download_word_etapa5(session_id: str):
+def download_word_etapa5(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     buffer = etapa5.gerar_word_etapa5(estudo)
     return StreamingResponse(
@@ -557,7 +579,7 @@ def download_word_etapa5(session_id: str):
 
 
 @app.get("/sessoes/{session_id}/etapa5/excel")
-def download_excel_etapa5(session_id: str):
+def download_excel_etapa5(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     buffer = etapa5.gerar_excel_etapa5(estudo)
     return StreamingResponse(
@@ -568,7 +590,7 @@ def download_excel_etapa5(session_id: str):
 
 
 @app.get("/sessoes/{session_id}/etapa5/ppt")
-def download_ppt_etapa5(session_id: str):
+def download_ppt_etapa5(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     try:
         caminho = etapa5_para_ppt.gerar_pptx_etapa5(
@@ -591,20 +613,20 @@ def download_ppt_etapa5(session_id: str):
 # ---------------------------------------------------------------------------
 
 @app.get("/sessoes/{session_id}/etapa6/precisa-checkpoint")
-def precisa_checkpoint_etapa6_rota(session_id: str):
+def precisa_checkpoint_etapa6_rota(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     return {"precisa_checkpoint": etapa6.precisa_checkpoint_etapa6(estudo)}
 
 
 @app.post("/sessoes/{session_id}/etapa6/checkpoint")
-def confirmar_checkpoint_etapa6_rota(session_id: str, body: Etapa6CheckpointRequest):
+def confirmar_checkpoint_etapa6_rota(session_id: str, body: Etapa6CheckpointRequest, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     msg = etapa6.confirmar_taxa_e_moeda(estudo, body.taxa_desconto, body.regra_moeda)
     return {"mensagem": msg}
 
 
 @app.post("/sessoes/{session_id}/etapa6/rodar")
-def rodar_etapa6_rota(session_id: str):
+def rodar_etapa6_rota(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     return etapa6.rodar_etapa6(estudo)
 
@@ -612,6 +634,7 @@ def rodar_etapa6_rota(session_id: str):
 @app.get("/sessoes/{session_id}/etapa6/fornecedores")
 def consultar_equalizacao_etapa6_rota(
     session_id: str,
+    _: _AuthSessao,
     pagina: int = Query(1, ge=1),
     tamanho_pagina: int = Query(20, ge=1, le=200),
     busca: str = Query(""),
@@ -637,14 +660,14 @@ def consultar_equalizacao_etapa6_rota(
 
 
 @app.get("/sessoes/{session_id}/etapa6/resumo-executivo")
-def resumo_executivo_etapa6_rota(session_id: str):
+def resumo_executivo_etapa6_rota(session_id: str, _: _AuthSessao):
     """KPIs comerciais: baseline, quantidade de propostas, valor médio, melhor proposta (menor preço)."""
     estudo = _get_estudo(session_id)
     return equalizacao_view.resumo_executivo_agregado(estudo)
 
 
 @app.get("/sessoes/{session_id}/etapa6/fornecedores/{fornecedor}")
-def detalhe_fornecedor_etapa6_rota(session_id: str, fornecedor: str):
+def detalhe_fornecedor_etapa6_rota(session_id: str, fornecedor: str, _: _AuthSessao):
     """Detalhe completo (on-tops, ajustes, premissas) de UM fornecedor — carregado sob demanda."""
     estudo = _get_estudo(session_id)
     detalhe = equalizacao_view.detalhe_de_um_fornecedor(estudo, fornecedor)
@@ -654,7 +677,7 @@ def detalhe_fornecedor_etapa6_rota(session_id: str, fornecedor: str):
 
 
 @app.get("/sessoes/{session_id}/etapa6/word")
-def download_word_etapa6(session_id: str):
+def download_word_etapa6(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     buffer = etapa6.gerar_word_etapa6(estudo)
     return StreamingResponse(
@@ -665,7 +688,7 @@ def download_word_etapa6(session_id: str):
 
 
 @app.get("/sessoes/{session_id}/etapa6/excel")
-def download_excel_etapa6(session_id: str):
+def download_excel_etapa6(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     buffer = etapa6.gerar_excel_etapa6(estudo)
     return StreamingResponse(
@@ -676,7 +699,7 @@ def download_excel_etapa6(session_id: str):
 
 
 @app.get("/sessoes/{session_id}/etapa6/ppt")
-def download_ppt_etapa6(session_id: str):
+def download_ppt_etapa6(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     try:
         caminho = etapa6_para_ppt.gerar_pptx_etapa6(
@@ -699,27 +722,27 @@ def download_ppt_etapa6(session_id: str):
 # ---------------------------------------------------------------------------
 
 @app.post("/sessoes/{session_id}/etapa7/rodar")
-def rodar_etapa7_rota(session_id: str):
+def rodar_etapa7_rota(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     return etapa7.rodar_etapa7(estudo)
 
 
 @app.get("/sessoes/{session_id}/etapa7/resumo-executivo")
-def resumo_executivo_etapa7_rota(session_id: str):
+def resumo_executivo_etapa7_rota(session_id: str, _: _AuthSessao):
     """KPIs: maior savings, fornecedor associado, nº de cenários, nº de pontos de negociação."""
     estudo = _get_estudo(session_id)
     return recomendacoes_view.resumo_executivo_recomendacoes(estudo)
 
 
 @app.get("/sessoes/{session_id}/etapa7/conteudo")
-def conteudo_etapa7_rota(session_id: str):
+def conteudo_etapa7_rota(session_id: str, _: _AuthSessao):
     """Conteúdo completo (três melhores, cenários, pontos de negociação, leitura final) — sem paginação."""
     estudo = _get_estudo(session_id)
     return recomendacoes_view.conteudo_completo_recomendacoes(estudo)
 
 
 @app.get("/sessoes/{session_id}/etapa7/word")
-def download_word_etapa7(session_id: str):
+def download_word_etapa7(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     buffer = etapa7.gerar_word_etapa7(estudo)
     return StreamingResponse(
@@ -730,7 +753,7 @@ def download_word_etapa7(session_id: str):
 
 
 @app.get("/sessoes/{session_id}/etapa7/excel")
-def download_excel_etapa7(session_id: str):
+def download_excel_etapa7(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     buffer = etapa7.gerar_excel_etapa7(estudo)
     return StreamingResponse(
@@ -741,7 +764,7 @@ def download_excel_etapa7(session_id: str):
 
 
 @app.get("/sessoes/{session_id}/etapa7/ppt")
-def download_ppt_etapa7(session_id: str):
+def download_ppt_etapa7(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     try:
         caminho = etapa7_para_ppt.gerar_pptx_etapa7(
@@ -764,7 +787,7 @@ def download_ppt_etapa7(session_id: str):
 # ---------------------------------------------------------------------------
 
 @app.post("/sessoes/{session_id}/etapa8/rodar")
-def rodar_etapa8_rota(session_id: str, body: Etapa8Request):
+def rodar_etapa8_rota(session_id: str, body: Etapa8Request, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     return etapa8.rodar_etapa8(
         estudo,
@@ -775,14 +798,14 @@ def rodar_etapa8_rota(session_id: str, body: Etapa8Request):
 
 
 @app.post("/sessoes/{session_id}/etapa8/confirmar-risco")
-def confirmar_risco_etapa8_rota(session_id: str, body: Etapa8RiscoConfirmacaoRequest):
+def confirmar_risco_etapa8_rota(session_id: str, body: Etapa8RiscoConfirmacaoRequest, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     msg = etapa8.confirmar_risco_suprimento(estudo, body.risco)
     return {"mensagem": msg}
 
 
 @app.get("/sessoes/{session_id}/etapa8/word")
-def download_word_etapa8(session_id: str):
+def download_word_etapa8(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     buffer = etapa8.gerar_word_etapa8(estudo)
     return StreamingResponse(
@@ -793,7 +816,7 @@ def download_word_etapa8(session_id: str):
 
 
 @app.get("/sessoes/{session_id}/etapa8/excel")
-def download_excel_etapa8(session_id: str):
+def download_excel_etapa8(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     buffer = etapa8.gerar_excel_etapa8(estudo)
     return StreamingResponse(
@@ -804,7 +827,7 @@ def download_excel_etapa8(session_id: str):
 
 
 @app.post("/sessoes/{session_id}/etapa/{numero}/corrigir")
-def corrigir_etapa_rota(session_id: str, numero: int, body: CorrecaoGenericaRequest):
+def corrigir_etapa_rota(session_id: str, numero: int, body: CorrecaoGenericaRequest, _: _AuthSessao):
     """
     Chat conversacional para qualquer etapa de 2 a 8 (a Etapa 1 tem seu
     próprio endpoint em /etapa1/chat, com o mesmo princípio). Decide a
@@ -817,7 +840,7 @@ def corrigir_etapa_rota(session_id: str, numero: int, body: CorrecaoGenericaRequ
 
 
 @app.get("/sessoes/{session_id}/etapa8/ppt")
-def download_ppt_etapa8(session_id: str):
+def download_ppt_etapa8(session_id: str, _: _AuthSessao):
     estudo = _get_estudo(session_id)
     try:
         caminho = etapa8_para_ppt.gerar_pptx_etapa8(
@@ -878,7 +901,7 @@ def _rodar_uma_etapa(estudo, numero):
 
 
 @app.post("/sessoes/{session_id}/recascatear/{etapa_inicial}")
-def recascatear_a_partir_de(session_id: str, etapa_inicial: str):
+def recascatear_a_partir_de(session_id: str, etapa_inicial: str, _: _AuthSessao):
     """
     Refaz a etapa informada e propaga automaticamente para todas as etapas
     seguintes do pipeline, na ordem real de execução (incluindo a 4B, que

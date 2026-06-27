@@ -201,18 +201,24 @@ def inicializar_banco() -> None:
     print(f"[DB] Banco inicializado em {_DB_PATH}")
 
 
-def salvar_estudo(session_id: str, estudo) -> None:
-    """Persiste (insert-or-replace) o Estudo serializado como JSON."""
+def salvar_estudo(session_id: str, estudo, time_id: int | None = None) -> None:
+    """
+    Persiste (upsert) o Estudo serializado como JSON.
+
+    time_id só é usado na criação inicial (INSERT). No UPDATE apenas
+    atualizado_em e dados mudam — time_id fica intocado, garantindo que
+    o auto-save do middleware não sobrescreva a associação de time.
+    """
     dados_json = json.dumps(asdict(estudo), ensure_ascii=False, default=str)
     agora = datetime.now(timezone.utc).isoformat()
     with _DB_LOCK, _conectar() as conn:
         conn.execute("""
-            INSERT INTO estudos (session_id, criado_em, atualizado_em, dados)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO estudos (session_id, criado_em, atualizado_em, dados, time_id)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(session_id) DO UPDATE SET
                 atualizado_em = excluded.atualizado_em,
                 dados         = excluded.dados
-        """, (session_id, agora, agora, dados_json))
+        """, (session_id, agora, agora, dados_json, time_id))
         conn.commit()
 
 
@@ -241,17 +247,35 @@ def listar_sessoes_salvas() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def listar_estudos_resumo() -> list[dict]:
+def obter_time_id_do_estudo(session_id: str) -> int | None:
     """
-    Lista estudos com os campos úteis para a tela de histórico.
+    Devolve o time_id do estudo ou None se o session_id não existir no banco.
+    Usado pela dependency get_usuario_com_acesso_a_sessao para verificar posse.
+    """
+    with _DB_LOCK, _conectar() as conn:
+        row = conn.execute(
+            "SELECT time_id FROM estudos WHERE session_id = ?", (session_id,)
+        ).fetchone()
+    return row["time_id"] if row else None
 
+
+def listar_estudos_resumo(time_id: int) -> list[dict]:
+    """
+    Lista estudos do time especificado com os campos úteis para o histórico.
+
+    Filtra por time_id — cada usuário vê apenas os estudos do seu time.
     Extrai cliente, categoria, micro_categoria e etapa_atual do JSON de cada
-    estudo. Trata estudos incompletos ou antigos com segurança: campos ausentes
-    recebem valores padrão legíveis em vez de erros.
+    estudo com segurança (campos ausentes recebem valores padrão legíveis).
     """
     with _DB_LOCK, _conectar() as conn:
         rows = conn.execute(
-            "SELECT session_id, criado_em, atualizado_em, dados FROM estudos ORDER BY atualizado_em DESC"
+            """
+            SELECT session_id, criado_em, atualizado_em, dados
+            FROM estudos
+            WHERE time_id = ?
+            ORDER BY atualizado_em DESC
+            """,
+            (time_id,),
         ).fetchall()
 
     resultado = []

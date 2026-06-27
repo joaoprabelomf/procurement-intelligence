@@ -21,10 +21,17 @@ Variável de ambiente obrigatória:
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
 
 import jwt  # PyJWT
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 logger = logging.getLogger(__name__)
+
+# HTTPBearer instrui o Swagger a mostrar o campo "Authorize" com Bearer token,
+# permitindo testar endpoints protegidos diretamente no /docs.
+_bearer = HTTPBearer()
 
 _ALGORITMO = "HS256"
 _EXPIRACAO_HORAS = 8
@@ -89,6 +96,62 @@ def decodificar_token(token: str) -> dict:
 
     Devolve o payload como dict se o token for válido e não expirado.
     Levanta jwt.InvalidTokenError (ou subclasse) se inválido/expirado —
-    a Parte 3 capturará essa exceção para retornar 401.
+    capturada pelas dependencies abaixo para retornar 401.
     """
     return jwt.decode(token, _obter_chave_secreta(), algorithms=[_ALGORITMO])
+
+
+# ---------------------------------------------------------------------------
+# FastAPI dependencies — usadas diretamente nas rotas (Parte 3+)
+# ---------------------------------------------------------------------------
+
+def get_usuario_atual(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+) -> dict:
+    """
+    Dependency: valida o token JWT do header Authorization: Bearer <token>.
+
+    Devolve dict com {id, time_id, papel} extraídos do payload.
+    Levanta 401 se o token estiver ausente, inválido ou expirado.
+
+    Rotas que precisam de auth mas não têm session_id usam esta dependency
+    diretamente (ex.: POST /sessoes, GET /estudos).
+    """
+    try:
+        payload = decodificar_token(credentials.credentials)
+        return {
+            "id": int(payload["sub"]),
+            "time_id": payload["time_id"],
+            "papel": payload["papel"],
+        }
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=401,
+            detail="Token expirado. Faça login novamente.",
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Token inválido.")
+
+
+def get_usuario_com_acesso_a_sessao(
+    session_id: str,
+    usuario: Annotated[dict, Depends(get_usuario_atual)],
+) -> dict:
+    """
+    Dependency: valida o token E verifica que o estudo pertence ao time do
+    usuário autenticado.
+
+    FastAPI injeta session_id diretamente do path parameter da rota — funciona
+    mesmo quando a dependency é declarada sem prefixo de router.
+
+    Retorna o mesmo dict do get_usuario_atual se tudo OK.
+    Levanta 403 se o estudo existir no banco mas pertencer a outro time.
+    Se o session_id não existir no banco, deixa passar — a rota levanta 404
+    via _get_estudo / sessions.obter_estudo.
+    """
+    # Import local para evitar ciclo (auth ← database ← auth)
+    from . import database
+    time_id_estudo = database.obter_time_id_do_estudo(session_id)
+    if time_id_estudo is not None and time_id_estudo != usuario["time_id"]:
+        raise HTTPException(status_code=403, detail="Acesso negado a este estudo.")
+    return usuario
