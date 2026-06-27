@@ -39,9 +39,14 @@ from .schemas import (
     CorrecaoGenericaRequest,
     LoginRequest,
     TokenResponse,
+    CriarUsuarioRequest,
+    CriarUsuarioResponse,
+    ListaUsuariosResponse,
+    UsuarioResumo,
 )
 from . import auth
 from fastapi import Depends
+import secrets
 
 # ---------------------------------------------------------------------------
 # Aliases de dependency — aplicados nas rotas que exigem autenticação.
@@ -58,6 +63,7 @@ from fastapi import Depends
 # ---------------------------------------------------------------------------
 _Auth = Annotated[dict, Depends(auth.get_usuario_atual)]
 _AuthSessao = Annotated[dict, Depends(auth.get_usuario_com_acesso_a_sessao)]
+_Admin = Annotated[dict, Depends(auth.get_usuario_admin)]
 
 from . import etapa5_para_ppt, etapa6_para_ppt, etapa7_para_ppt, etapa8_para_ppt
 from . import correcao_generica
@@ -220,6 +226,57 @@ def login(body: LoginRequest):
         papel=usuario["papel"],
     )
     return TokenResponse(access_token=token)
+
+
+# ---------------------------------------------------------------------------
+# Admin — gestão de usuários (Parte 5)
+# ---------------------------------------------------------------------------
+
+@app.post("/admin/usuarios", response_model=CriarUsuarioResponse, status_code=201)
+def admin_criar_usuario(body: CriarUsuarioRequest, admin: _Admin):
+    """
+    Cria um novo usuário no time do admin autenticado com papel='membro'.
+
+    - Gera uma senha temporária forte e aleatória (secrets.token_urlsafe).
+    - Armazena apenas o hash bcrypt — a senha em texto puro é devolvida
+      UMA vez na resposta para o admin repassar ao novo usuário.
+    - Retorna 409 se o email já estiver cadastrado.
+    """
+    senha_temp = secrets.token_urlsafe(12)  # ~16 chars URL-safe
+    senha_hash = database.hashear_senha(senha_temp)
+    try:
+        novo_id = database.criar_usuario(
+            email=body.email,
+            senha_hash=senha_hash,
+            time_id=admin["time_id"],
+            papel="membro",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return CriarUsuarioResponse(id=novo_id, email=body.email, senha_temporaria=senha_temp)
+
+
+@app.get("/admin/usuarios", response_model=ListaUsuariosResponse)
+def admin_listar_usuarios(admin: _Admin):
+    """Lista todos os usuários do time do admin autenticado (sem expor senha)."""
+    usuarios = database.listar_usuarios_do_time(admin["time_id"])
+    return ListaUsuariosResponse(
+        usuarios=[UsuarioResumo(**u) for u in usuarios]
+    )
+
+
+@app.patch("/admin/usuarios/{usuario_id}/desativar", status_code=200)
+def admin_desativar_usuario(usuario_id: int, admin: _Admin):
+    """
+    Desativa (ativo=0) um usuário do time do admin.
+    O admin não pode desativar a si mesmo.
+    """
+    if usuario_id == admin["id"]:
+        raise HTTPException(status_code=400, detail="Você não pode desativar sua própria conta.")
+    encontrado = database.desativar_usuario(usuario_id, admin["time_id"])
+    if not encontrado:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado neste time.")
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

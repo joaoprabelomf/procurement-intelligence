@@ -26,6 +26,19 @@ export function getStoredEmail() { return localStorage.getItem(EMAIL_KEY); }
 export function setStoredEmail(e) { localStorage.setItem(EMAIL_KEY, e); }
 export function clearStoredEmail() { localStorage.removeItem(EMAIL_KEY); }
 
+// Decodifica o payload do JWT sem verificar assinatura (só para UI).
+// A segurança real é garantida pelo backend a cada chamada.
+export function getTokenPayload() {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const b64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(b64));
+  } catch {
+    return null;
+  }
+}
+
 // Injeta o token JWT em todas as chamadas
 api.interceptors.request.use((config) => {
   const token = getToken();
@@ -82,6 +95,24 @@ export function extrairMensagemErro(error, contexto) {
     return "Não foi possível conectar ao servidor. Confirme que o backend está rodando em " + API_URL + ".";
   }
   return error?.message || "Ocorreu um erro inesperado.";
+}
+
+// ---------------------------------------------------------------------------
+// Admin — gestão de usuários (Parte 5)
+// ---------------------------------------------------------------------------
+
+export async function adminCriarUsuario(email) {
+  const { data } = await api.post("/admin/usuarios", { email });
+  return data; // { id, email, senha_temporaria }
+}
+
+export async function adminListarUsuarios() {
+  const { data } = await api.get("/admin/usuarios");
+  return data.usuarios;
+}
+
+export async function adminDesativarUsuario(id) {
+  await api.patch(`/admin/usuarios/${id}/desativar`);
 }
 
 // ---------------------------------------------------------------------------

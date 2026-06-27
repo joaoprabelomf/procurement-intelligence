@@ -81,6 +81,32 @@ class TokenResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Admin — criação e listagem de usuários (Parte 5)
+# ---------------------------------------------------------------------------
+
+class CriarUsuarioRequest(BaseModel):
+    email: str
+
+
+class CriarUsuarioResponse(BaseModel):
+    id: int
+    email: str
+    senha_temporaria: str  # exibida UMA vez — não armazenada em texto puro
+
+
+class UsuarioResumo(BaseModel):
+    id: int
+    email: str
+    papel: str
+    ativo: bool
+    criado_em: str
+
+
+class ListaUsuariosResponse(BaseModel):
+    usuarios: list[UsuarioResumo]
+
+
+# ---------------------------------------------------------------------------
 # Resposta genérica de erro (corpo do HTTPException)
 # ---------------------------------------------------------------------------
 

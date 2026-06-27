@@ -302,6 +302,59 @@ def listar_estudos_resumo(time_id: int) -> list[dict]:
 # Usuários — consultas usadas pela auth (Parte 2+)
 # ---------------------------------------------------------------------------
 
+def criar_usuario(email: str, senha_hash: str, time_id: int, papel: str = "membro") -> int:
+    """
+    Insere um novo usuário no banco e devolve o ID gerado.
+    Levanta ValueError se o email já estiver cadastrado.
+    """
+    import sqlite3 as _sqlite3
+    agora = datetime.now(timezone.utc).isoformat()
+    try:
+        with _DB_LOCK, _conectar() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO usuarios (email, senha_hash, time_id, papel, ativo, criado_em)
+                VALUES (?, ?, ?, ?, 1, ?)
+                """,
+                (email, senha_hash, time_id, papel, agora),
+            )
+            conn.commit()
+            return cursor.lastrowid
+    except _sqlite3.IntegrityError:
+        raise ValueError(f"Email '{email}' já está cadastrado.")
+
+
+def listar_usuarios_do_time(time_id: int) -> list[dict]:
+    """Lista usuários do time sem expor senha_hash."""
+    with _DB_LOCK, _conectar() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, email, papel, ativo, criado_em
+            FROM usuarios
+            WHERE time_id = ?
+            ORDER BY criado_em DESC
+            """,
+            (time_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def desativar_usuario(usuario_id: int, time_id: int) -> bool:
+    """
+    Define ativo=0 para o usuário especificado.
+    Verifica que o usuário pertence ao time (evita admin de um time
+    desativar usuários de outro). Devolve True se atualizou, False se
+    não encontrou (ID errado ou time diferente).
+    """
+    with _DB_LOCK, _conectar() as conn:
+        n = conn.execute(
+            "UPDATE usuarios SET ativo = 0 WHERE id = ? AND time_id = ?",
+            (usuario_id, time_id),
+        ).rowcount
+        conn.commit()
+    return n > 0
+
+
 def buscar_usuario_por_email(email: str) -> dict | None:
     """
     Devolve o dict do usuário (id, email, senha_hash, time_id, papel, ativo)

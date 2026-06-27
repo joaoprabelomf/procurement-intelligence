@@ -133,6 +133,22 @@ def get_usuario_atual(
         raise HTTPException(status_code=401, detail="Token inválido.")
 
 
+def get_usuario_admin(
+    usuario: Annotated[dict, Depends(get_usuario_atual)],
+) -> dict:
+    """
+    Dependency: exige que o usuário autenticado tenha papel='admin'.
+    Levanta 403 para qualquer outro papel.
+    Usado nos endpoints /admin/*.
+    """
+    if usuario["papel"] != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Acesso restrito a administradores.",
+        )
+    return usuario
+
+
 def get_usuario_com_acesso_a_sessao(
     session_id: str,
     usuario: Annotated[dict, Depends(get_usuario_atual)],

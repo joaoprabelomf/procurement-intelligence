@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import UploadDocumentos from "./pages/UploadDocumentos";
 import Cascata from "./pages/Cascata";
 import Historico from "./pages/Historico";
+import Admin from "./pages/Admin";
 import ResultadoEtapa5 from "./pages/ResultadoEtapa5";
 import ResultadoEtapa7 from "./pages/ResultadoEtapa7";
 import ResultadoEtapa8 from "./pages/ResultadoEtapa8";
@@ -36,6 +37,7 @@ function App() {
             path="/resultado/8"
             element={<RotaProtegida><ResultadoEtapa8 /></RotaProtegida>}
           />
+          <Route path="/admin" element={<RotaProtegida><Admin /></RotaProtegida>} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>
