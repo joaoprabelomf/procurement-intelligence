@@ -21,10 +21,13 @@ O que faz:
 """
 
 import json
+import logging
 
 from .config import MAX_CHARS_PER_DOC
 from .ia import call_claude
 from .erros import ErroEtapa
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +104,93 @@ Regras:
 """
 
 
+# ---------------------------------------------------------------------------
+# Memória RAG — pré-extração de micro_categoria e injeção de referências
+# ---------------------------------------------------------------------------
+
+# System prompt mínimo para a chamada rápida de pré-extração.
+_SYSTEM_MICRO_RAPIDA = (
+    "Você é um classificador de procurement. Leia o texto de baseline recebido "
+    "e identifique a micro-categoria da compra em 1 a 5 palavras.\n\n"
+    "Exemplos de micro-categoria: Limpeza Predial, Segurança Patrimonial, MRO, "
+    "EPI, Frota Terceirizada, Facilities, Desenvolvimento de Software, Energia Elétrica.\n\n"
+    "Responda SOMENTE com a micro-categoria, sem explicação, sem pontuação extra."
+)
+
+# Instrução adicionada ao SYSTEM_BASELINE quando há referências históricas.
+_INSTRUCAO_REFERENCIAS = (
+    "\n\nA mensagem do usuário contém uma seção '--- REFERÊNCIAS HISTÓRICAS DO SEU TIME ---' "
+    "com dados reais de estudos anteriores do mesmo time na mesma micro-categoria. "
+    "Use essas referências para CALIBRAR sua análise — especialmente o should-cost, "
+    "os fatores de TCO e os drivers de custo. "
+    "Cada cliente e processo é único: não copie os valores históricos diretamente; "
+    "use-os como benchmarks para avaliar se o cenário atual está dentro do esperado."
+)
+
+
+def _extrair_micro_categoria_rapida(texto_baseline: str) -> str | None:
+    """
+    Chamada rápida e barata ao Claude para identificar a micro_categoria
+    antes da análise completa da Etapa 2, permitindo buscar casos históricos
+    precisos antes de montar o contexto principal.
+
+    Usa apenas as primeiras 2500 chars do baseline (suficiente para identificar
+    o tipo de compra) e max_tokens=20 (a resposta é de 1-5 palavras).
+
+    Retorna None se falhar por qualquer motivo — o chamador trata a ausência
+    graciosamente (Etapa 2 roda sem memória, como se RAG não existisse).
+    """
+    try:
+        trecho = texto_baseline[:2500]
+        resposta = call_claude(
+            messages=[{"role": "user", "content": trecho}],
+            system=_SYSTEM_MICRO_RAPIDA,
+            max_tokens=20,
+        )
+        micro = resposta.strip().strip('"').strip("'").strip()
+        return micro if micro else None
+    except Exception as exc:
+        logger.debug("[RAG] Pré-extração de micro_categoria falhou: %s", exc)
+        return None
+
+
+def _montar_secao_referencias(casos: list[dict]) -> str:
+    """
+    Formata a lista de casos similares como seção de texto para injeção
+    no contexto da Etapa 2. Produz saída legível por humanos E pelo Claude.
+    """
+    n = len(casos)
+    linhas = [
+        f"\n--- REFERÊNCIAS HISTÓRICAS DO SEU TIME ({n} caso(s) similar(es)) ---",
+        "Use como REFERÊNCIA para calibrar estimativas. Cada processo é único.",
+        "",
+    ]
+    for i, caso in enumerate(casos, start=1):
+        linhas.append(f"Caso {i}:")
+        preco = caso.get("preco_anual_total")
+        if preco:
+            linhas.append(f"  Gasto anual (baseline): R$ {preco:,.0f}")
+        if caso.get("pareto"):
+            linhas.append(f"  Onde está o dinheiro: {caso['pareto']}")
+        if caso.get("should_cost_sintese"):
+            linhas.append(f"  Should-cost (razoabilidade): {caso['should_cost_sintese']}")
+        drivers = caso.get("drivers_principais") or []
+        if drivers:
+            linhas.append(f"  Drivers principais: {', '.join(drivers)}")
+        tco = caso.get("tco_fatores") or []
+        if tco:
+            linhas.append(f"  Fatores de TCO omitidos no preço: {', '.join(tco)}")
+        if caso.get("savings_referencia"):
+            linhas.append(f"  Savings realizados: {caso['savings_referencia']}")
+        quadrante = caso.get("kraljic_quadrante")
+        if quadrante:
+            linhas.append(f"  Quadrante Kraljic: {quadrante}")
+        linhas.append("")
+
+    linhas.append("--- FIM DAS REFERÊNCIAS ---\n")
+    return "\n".join(linhas)
+
+
 def _textos_baseline(estudo) -> str:
     """Extrai e concatena o texto dos documentos classificados como baseline."""
     # Baseline usa limite menor que o padrão — resposta da Etapa 2 é rica e
@@ -144,21 +234,27 @@ def _parse_resposta(resposta_bruta: str) -> dict:
 # Função principal
 # ---------------------------------------------------------------------------
 
-def rodar_etapa2(estudo) -> dict:
+def rodar_etapa2(estudo, session_id: str | None = None, time_id: int | None = None) -> dict:
     """
     Executa a Etapa 2 completa.
 
     Parâmetros
     ----------
-    estudo : objeto Estudo (de estudo.py) — já populado pela Etapa 1.
+    estudo      : objeto Estudo (de estudo.py) — já populado pela Etapa 1.
+    session_id  : ID da sessão atual (para excluir da busca de histórico).
+    time_id     : ID do time (para isolamento da memória RAG por time).
+                  Quando ambos são None, a etapa roda sem memória — exatamente
+                  como antes do Degrau 3 (compatibilidade retroativa).
 
     Retorna
     -------
     resultado : dict com as chaves:
-        - analise          : dict completo da análise (JSON do Claude)
-        - tem_baseline     : bool
+        - analise                    : dict completo da análise (JSON do Claude)
+        - tem_baseline               : bool
         - precisa_confirmar_anualização : bool
-        - resumo           : texto legível pra exibir na UI
+        - resumo                     : texto legível pra exibir na UI
+        - casos_consultados          : int (0 se sem histórico)
+        - micro_categoria_hint       : str | None (micro_categoria detectada no pré-passo)
     """
 
     # 1. Verificar se há baseline
@@ -174,30 +270,84 @@ def rodar_etapa2(estudo) -> dict:
             "analise": None,
             "precisa_confirmar_anualização": False,
             "resumo": f"⚠️ {msg}",
+            "casos_consultados": 0,
+            "micro_categoria_hint": None,
         }
 
-    # 2. Montar mensagem pro Claude
+    # 2. Montar texto do baseline
     texto_baseline = _textos_baseline(estudo)
+
+    # ---------------------------------------------------------------------------
+    # RAG — busca de casos similares (opcional; nunca trava a etapa)
+    # ---------------------------------------------------------------------------
+    casos_historicos = []
+    micro_hint = None
+    secao_referencias = ""
+    system_etapa2 = SYSTEM_BASELINE  # padrão: sem instrução de referências
+
+    if session_id and time_id:
+        # 2a. Pré-extração rápida da micro_categoria para matching preciso
+        micro_hint = _extrair_micro_categoria_rapida(texto_baseline)
+
+        if micro_hint:
+            from . import database  # import local para evitar ciclo
+            casos_historicos = database.buscar_casos_similares(
+                micro_categoria=micro_hint,
+                time_id=time_id,
+                excluir_session_id=session_id,
+            )
+
+        # 2b. Log detalhado para inspeção (comparação antes/depois)
+        if casos_historicos:
+            secao_referencias = _montar_secao_referencias(casos_historicos)
+            system_etapa2 = SYSTEM_BASELINE + _INSTRUCAO_REFERENCIAS
+
+            logger.info(
+                "[RAG] Etapa 2 — micro_categoria detectada: '%s' | %d caso(s) encontrado(s): %s",
+                micro_hint,
+                len(casos_historicos),
+                [c["session_id"] for c in casos_historicos],
+            )
+            # Print também no stdout para fácil inspeção no terminal do servidor
+            print(f"\n{'='*60}")
+            print(f"[RAG] Etapa 2 — referências históricas injetadas")
+            print(f"  micro_categoria detectada : {micro_hint!r}")
+            print(f"  casos encontrados         : {len(casos_historicos)}")
+            for c in casos_historicos:
+                print(f"    • {c['session_id']} — {c['micro_categoria']}")
+            print(f"\n[RAG] SEÇÃO INJETADA NO CONTEXTO:")
+            print(secao_referencias)
+            print(f"{'='*60}\n")
+        else:
+            logger.info(
+                "[RAG] Etapa 2 — micro_categoria: '%s' | nenhum caso histórico encontrado (rodando sem memória)",
+                micro_hint,
+            )
+            print(f"[RAG] Etapa 2 — sem histórico para '{micro_hint}' (rodando sem memória)")
+    # ---------------------------------------------------------------------------
+
+    # 3. Montar contexto final (com ou sem referências)
     contexto = (
         f"Categoria: {estudo.categoria}\n"
         f"Modelo de precificação: {estudo.modelo_precificacao}\n\n"
         f"{texto_baseline}"
+        f"{secao_referencias}"
     )
 
-    # 3. Chamar Claude
+    # 4. Chamar Claude
     resposta_bruta = call_claude(
         messages=[{"role": "user", "content": contexto}],
-        system=SYSTEM_BASELINE,
+        system=system_etapa2,
         max_tokens=8000,
     )
 
-    # 4. Parsear
+    # 5. Parsear
     try:
         analise = _parse_resposta(resposta_bruta)
     except (json.JSONDecodeError, ValueError) as e:
         raise ErroEtapa(f"Erro ao interpretar resposta da IA na Etapa 2: {e}", resposta_bruta=resposta_bruta)
 
-    # 5. Gravar no Estudo
+    # 6. Gravar no Estudo
     estudo.micro_categoria = analise.get("micro_categoria")
     estudo.baseline = analise
 
@@ -207,7 +357,7 @@ def rodar_etapa2(estudo) -> dict:
     for f in analise.get("faltantes", []):
         estudo.add_faltante(f)
 
-    # 6. Montar resumo legível
+    # 7. Montar resumo legível
     resumo = _montar_resumo(analise)
 
     estudo.etapa_atual = 2
@@ -217,6 +367,8 @@ def rodar_etapa2(estudo) -> dict:
         "analise": analise,
         "precisa_confirmar_anualização": analise.get("comercial", {}).get("precisa_confirmar_anualização", False),
         "resumo": resumo,
+        "casos_consultados": len(casos_historicos),
+        "micro_categoria_hint": micro_hint,
     }
 
 
