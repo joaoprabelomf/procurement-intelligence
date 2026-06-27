@@ -21,6 +21,8 @@ venv/
 .env
 .env.*
 *.env
+# .env.example é seguro: contém apenas placeholders, sem valores reais
+!.env.example
 
 # Arquivos temporários do Python
 *.log
