@@ -779,9 +779,9 @@ def download_ppt_etapa6(session_id: str, _: _AuthSessao):
 # ---------------------------------------------------------------------------
 
 @app.post("/sessoes/{session_id}/etapa7/rodar")
-def rodar_etapa7_rota(session_id: str, _: _AuthSessao):
+def rodar_etapa7_rota(session_id: str, usuario: _AuthSessao):
     estudo = _get_estudo(session_id)
-    return etapa7.rodar_etapa7(estudo)
+    return etapa7.rodar_etapa7(estudo, session_id=session_id, time_id=usuario["time_id"])
 
 
 @app.get("/sessoes/{session_id}/etapa7/resumo-executivo")
@@ -844,13 +844,15 @@ def download_ppt_etapa7(session_id: str, _: _AuthSessao):
 # ---------------------------------------------------------------------------
 
 @app.post("/sessoes/{session_id}/etapa8/rodar")
-def rodar_etapa8_rota(session_id: str, body: Etapa8Request, _: _AuthSessao):
+def rodar_etapa8_rota(session_id: str, body: Etapa8Request, usuario: _AuthSessao):
     estudo = _get_estudo(session_id)
     return etapa8.rodar_etapa8(
         estudo,
         categoria_manual=body.categoria_manual,
         impacto_manual=body.impacto_manual,
         risco_manual=body.risco_manual,
+        session_id=session_id,
+        time_id=usuario["time_id"],
     )
 
 
@@ -954,9 +956,9 @@ def _rodar_uma_etapa(estudo, numero, session_id: str | None = None, time_id: int
     if numero == 6:
         return etapa6.rodar_etapa6(estudo)
     if numero == 7:
-        return etapa7.rodar_etapa7(estudo)
+        return etapa7.rodar_etapa7(estudo, session_id=session_id, time_id=time_id)
     if numero == 8:
-        return etapa8.rodar_etapa8(estudo)
+        return etapa8.rodar_etapa8(estudo, session_id=session_id, time_id=time_id)
     raise ValueError(f"Número de etapa desconhecido: {numero}")
 
 

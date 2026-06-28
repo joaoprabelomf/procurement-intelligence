@@ -445,19 +445,117 @@ def montar_resumo_de_caso(dados: dict) -> dict | None:
         return None
 
 
+def montar_resumo_etapa7(dados: dict) -> dict | None:
+    """
+    Extrai campos relevantes para recomendações (Etapa 7): cenários de decisão
+    históricos, padrões de negociação e savings realizados.
+    Retorna None se o estudo não tiver dados de recomendações — nunca levanta.
+    """
+    try:
+        micro_cat = (dados.get("micro_categoria") or "").strip()
+        if not micro_cat:
+            return None
+
+        recomendacoes = dados.get("recomendacoes") or {}
+        equalizacao = dados.get("equalizacao_comercial") or {}
+
+        # Cenários de decisão: pega os 2 mais recentes (evita encher o prompt)
+        cenarios_raw = recomendacoes.get("cenarios_decisao") or []
+        cenarios = [
+            {
+                "nome": c.get("nome", "—"),
+                "descricao": c.get("descricao", "—"),
+                "trade_off": c.get("trade_off", "—"),
+            }
+            for c in cenarios_raw[:2]
+            if isinstance(c, dict)
+        ]
+
+        # Alavancas de negociação: top 3 por fornecedor
+        neg_raw = recomendacoes.get("pontos_negociacao") or []
+        alavancas = []
+        for forn_entry in neg_raw[:3]:
+            if not isinstance(forn_entry, dict):
+                continue
+            for alav in (forn_entry.get("alavancas") or [])[:2]:
+                if isinstance(alav, dict) and alav.get("ponto"):
+                    alavancas.append(alav["ponto"])
+
+        resumo = {
+            "micro_categoria": micro_cat,
+            "savings_referencia": _extrair_savings_texto(equalizacao),
+            "cenarios_decisao": cenarios,
+            "alavancas_negociacao": alavancas[:4],
+            "leitura_final": (recomendacoes.get("leitura_final") or "")[:300],
+        }
+
+        if not any([resumo["savings_referencia"], resumo["cenarios_decisao"], resumo["alavancas_negociacao"]]):
+            return None
+
+        return resumo
+    except Exception as exc:
+        logger.debug("[RAG] montar_resumo_etapa7 falhou: %s", exc)
+        return None
+
+
+def montar_resumo_etapa8(dados: dict) -> dict | None:
+    """
+    Extrai campos relevantes para estratégia Kraljic (Etapa 8): quadrante
+    histórico, risco de suprimento, estratégia e ações táticas.
+    Retorna None se o estudo não tiver dados de estratégia — nunca levanta.
+    """
+    try:
+        micro_cat = (dados.get("micro_categoria") or "").strip()
+        if not micro_cat:
+            return None
+
+        estrategia = dados.get("estrategia_categoria") or {}
+        quadrante = estrategia.get("quadrante")
+        if not quadrante:
+            return None  # sem estratégia Kraljic registrada, o caso não ajuda a E8
+
+        acoes = [
+            f"[{a.get('prazo','?')}] {a.get('acao','')}"
+            for a in (estrategia.get("acoes_taticas") or [])[:3]
+            if isinstance(a, dict) and a.get("acao")
+        ]
+
+        resumo = {
+            "micro_categoria": micro_cat,
+            "kraljic_quadrante": quadrante,
+            "kraljic_impacto": estrategia.get("_impacto"),
+            "kraljic_risco": estrategia.get("_risco"),
+            "kraljic_resumo_posicao": (estrategia.get("resumo_posicao") or "")[:250],
+            "estrategia_recomendada": (estrategia.get("estrategia_recomendada") or "")[:300],
+            "acoes_taticas_top3": acoes,
+            "alertas": (estrategia.get("alertas_estrategicos") or [])[:2],
+        }
+
+        return resumo
+    except Exception as exc:
+        logger.debug("[RAG] montar_resumo_etapa8 falhou: %s", exc)
+        return None
+
+
 def buscar_casos_similares(
     micro_categoria: str,
     time_id: int,
     excluir_session_id: str,
     limite: int = 5,
+    extrator=None,
 ) -> list[dict]:
     """
     Recupera estudos do mesmo time com a mesma micro_categoria (normalizada).
     Retorna lista de dicts com campos-resumo — nunca levanta exceção.
 
+    extrator: função opcional para extrair campos do estudo JSON. Por padrão
+              usa montar_resumo_de_caso (adequado para Etapa 2). Passe
+              montar_resumo_etapa7 ou montar_resumo_etapa8 para as demais.
+
     Sempre filtra por time_id (isolamento Degrau 2).
     Tolera estudos com JSON corrompido ou campos ausentes (pula silenciosamente).
     """
+    _extrator = extrator if extrator is not None else montar_resumo_de_caso
     micro_normalizada = _normalizar_micro_categoria(micro_categoria)
     if not micro_normalizada:
         return []
@@ -490,7 +588,7 @@ def buscar_casos_similares(
         if micro_do_caso != micro_normalizada:
             continue
 
-        resumo = montar_resumo_de_caso(dados)
+        resumo = _extrator(dados)
         if resumo:
             casos.append({"session_id": row["session_id"][:8] + "…", **resumo})
 
