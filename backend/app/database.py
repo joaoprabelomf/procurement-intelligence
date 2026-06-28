@@ -698,6 +698,99 @@ def calcular_benchmark_preco(
     return resultado
 
 
+def calcular_benchmark_savings(
+    micro_categoria: str,
+    time_id: int,
+    excluir_session_id: str,
+) -> dict | None:
+    """
+    Calcula benchmark de savings histórico para a micro_categoria no time.
+
+    Para cada estudo histórico da mesma micro_categoria, extrai o MAIOR
+    savings_percentual encontrado entre os fornecedores (melhor resultado
+    realizado naquele estudo). Casos sem savings válido são ignorados.
+
+    Léxico do label (mesmo padrão do benchmark de preço):
+        1 caso  → "referência"
+        2-3     → "faixa"
+        4+      → "mediana"
+
+    Retorna None se não houver nenhum caso com savings válido.
+    Nunca levanta exceção — erros são logados e retornam None.
+    """
+    micro_normalizada = _normalizar_micro_categoria(micro_categoria)
+    if not micro_normalizada:
+        return None
+
+    try:
+        with _DB_LOCK, _conectar() as conn:
+            rows = conn.execute(
+                """
+                SELECT dados FROM estudos
+                WHERE time_id = ?
+                  AND session_id != ?
+                ORDER BY atualizado_em DESC
+                LIMIT 50
+                """,
+                (time_id, excluir_session_id),
+            ).fetchall()
+    except Exception as exc:
+        logger.warning("[BENCHMARK_SAVINGS] Falha ao consultar banco: %s", exc)
+        return None
+
+    savings_por_estudo: list[float] = []
+    for row in rows:
+        try:
+            dados = json.loads(row["dados"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+        micro_do_caso = _normalizar_micro_categoria(dados.get("micro_categoria") or "")
+        if micro_do_caso != micro_normalizada:
+            continue
+
+        equalizacao = dados.get("equalizacao_comercial") or {}
+        fornecedores = equalizacao.get("por_fornecedor") or []
+        valores = [
+            float(f["savings_percentual"])
+            for f in fornecedores
+            if isinstance(f, dict)
+            and isinstance(f.get("savings_percentual"), (int, float))
+            and f["savings_percentual"] > 0
+        ]
+        if valores:
+            savings_por_estudo.append(max(valores))
+
+    if not savings_por_estudo:
+        return None
+
+    n = len(savings_por_estudo)
+    savings_sorted = sorted(savings_por_estudo)
+    minimo = savings_sorted[0]
+    maximo = savings_sorted[-1]
+
+    if n >= 4:
+        mediana: float | None = statistics.median(savings_sorted)
+        label = "mediana"
+    else:
+        mediana = None
+        label = "referência" if n == 1 else "faixa"
+
+    resultado = {
+        "n": n,
+        "label": label,
+        "mediana": mediana,
+        "minimo": minimo,
+        "maximo": maximo,
+    }
+    logger.info(
+        "[BENCHMARK_SAVINGS] micro_categoria='%s' | n=%d | label=%s | min=%.1f%% | max=%.1f%% | mediana=%s",
+        micro_normalizada, n, label, minimo, maximo,
+        f"{mediana:.1f}%" if mediana is not None else "—",
+    )
+    return resultado
+
+
 def buscar_usuario_por_email(email: str) -> dict | None:
     """
     Devolve o dict do usuário (id, email, senha_hash, time_id, papel, ativo)

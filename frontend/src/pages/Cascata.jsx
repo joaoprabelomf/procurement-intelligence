@@ -514,6 +514,7 @@ export default function Cascata() {
           {fase === FASE.CONFIRMACAO && etapaVisualizada === 6 && (
             <EqualizacaoConteudo
               sessionId={sessionIdRef.current}
+              benchmarkSavings={resultadoAtual?.benchmark_savings ?? null}
               onEnviarMensagem={(mensagem) => handleEnviarCorrecao(6, mensagem)}
               onConfirmar={() => handleConfirmar(6)}
               onRefazer={() => handleRefazer(6)}

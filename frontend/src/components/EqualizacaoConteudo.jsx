@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Send, Check, RefreshCw, Pencil } from "lucide-react";
+import { Send, Check, RefreshCw, Pencil, TrendingDown } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import Button from "./Button";
 import Card from "./Card";
@@ -8,12 +8,18 @@ import KpisEqualizacao from "./KpisEqualizacao";
 import TabelaEqualizacao from "./TabelaEqualizacao";
 import { resumoExecutivoEtapa6, urlDownloadEtapa6Word, urlDownloadEtapa6Excel, urlDownloadEtapa6Ppt } from "../lib/api";
 
+function formatarPct(valor) {
+  if (valor == null) return "—";
+  return `${valor.toFixed(1)}%`;
+}
+
 // "Mini-app" da Etapa 6 (Equalização Comercial) — mesmo padrão da Etapa 4
 // (PropostasConteudo), com KPIs e colunas COMERCIAIS em vez de técnicas:
 // baseline, quantidade de propostas, valor médio, melhor proposta (menor
 // preço) — decisão do usuário ao revisar a tela.
 export default function EqualizacaoConteudo({
   sessionId,
+  benchmarkSavings = null,
   onEnviarMensagem,
   onConfirmar,
   onRefazer,
@@ -53,6 +59,44 @@ export default function EqualizacaoConteudo({
   return (
     <div className="space-y-4">
       <KpisEqualizacao resumo={resumo} />
+
+      {benchmarkSavings && (
+        <Card title="Referência histórica de savings do seu time">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[11px] text-am-text-secondary mb-2">
+                Com base em {benchmarkSavings.n} estudo(s) similar(es) da mesma categoria
+              </p>
+              {benchmarkSavings.label === "mediana" && (
+                <div className="space-y-0.5">
+                  <p className="text-sm text-am-text">
+                    Mediana histórica:{" "}
+                    <span className="font-bold text-am-positive">{formatarPct(benchmarkSavings.mediana)}</span>
+                  </p>
+                  <p className="text-xs text-am-text-secondary">
+                    Faixa: {formatarPct(benchmarkSavings.minimo)} – {formatarPct(benchmarkSavings.maximo)}
+                  </p>
+                </div>
+              )}
+              {benchmarkSavings.label === "faixa" && (
+                <p className="text-sm text-am-text">
+                  Faixa de referência:{" "}
+                  <span className="font-bold text-am-positive">
+                    {formatarPct(benchmarkSavings.minimo)} – {formatarPct(benchmarkSavings.maximo)}
+                  </span>
+                </p>
+              )}
+              {benchmarkSavings.label === "referência" && (
+                <p className="text-sm text-am-text">
+                  Referência:{" "}
+                  <span className="font-bold text-am-positive">{formatarPct(benchmarkSavings.minimo)}</span>
+                </p>
+              )}
+            </div>
+            <TrendingDown size={20} className="text-am-positive opacity-60 shrink-0 mt-1" />
+          </div>
+        </Card>
+      )}
 
       <TabelaEqualizacao key={chaveRecarregar} sessionId={sessionId} moeda={resumo?.moeda_referencia || "BRL"} />
 
