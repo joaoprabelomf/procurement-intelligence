@@ -527,6 +527,7 @@ export default function Cascata() {
             <BaselineConteudo
               sessionId={sessionIdRef.current}
               casosConsultados={resultadoAtual?.casos_consultados ?? 0}
+              benchmarkPreco={resultadoAtual?.benchmark_preco ?? null}
               onEnviarMensagem={(mensagem) => handleEnviarCorrecao(2, mensagem)}
               onConfirmar={() => handleConfirmar(2)}
               onRefazer={() => handleRefazer(2)}
