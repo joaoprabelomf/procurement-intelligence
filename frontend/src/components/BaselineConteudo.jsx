@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import Button from "./Button";
 import Card from "./Card";
 import BadgeRAG from "./BadgeRAG";
+import BadgeConfianca from "./BadgeConfianca";
 import { resumoExecutivoEtapa2, detalheEtapa2 } from "../lib/api";
 
 function formatarMoeda(valor) {
@@ -19,6 +20,8 @@ function formatarMoeda(valor) {
 export default function BaselineConteudo({
   sessionId,
   casosConsultados = 0,
+  benchmarkPreco = null,
+  confiancaEtapa = null,
   onEnviarMensagem,
   onConfirmar,
   onRefazer,
@@ -66,7 +69,12 @@ export default function BaselineConteudo({
 
   return (
     <div className="space-y-4">
-      <BadgeRAG casosConsultados={casosConsultados} />
+      {(confiancaEtapa || casosConsultados > 0) && (
+        <div className="flex flex-wrap gap-2">
+          <BadgeConfianca confiancaEtapa={confiancaEtapa} />
+          <BadgeRAG casosConsultados={casosConsultados} />
+        </div>
+      )}
 
       {resumo && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -83,6 +91,53 @@ export default function BaselineConteudo({
             </Card>
           ))}
         </div>
+      )}
+
+      {benchmarkPreco && (
+        <Card title="Contexto histórico do seu time">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[11px] text-am-text-secondary mb-2">
+                Com base em {benchmarkPreco.n} estudo(s) similar(es) da mesma categoria
+              </p>
+              {benchmarkPreco.label === "mediana" && (
+                <div className="space-y-0.5">
+                  <p className="text-sm text-am-text">
+                    Mediana histórica:{" "}
+                    <span className="font-bold text-am-navy">{formatarMoeda(benchmarkPreco.mediana)}</span>
+                  </p>
+                  <p className="text-xs text-am-text-secondary">
+                    Faixa: {formatarMoeda(benchmarkPreco.minimo)} – {formatarMoeda(benchmarkPreco.maximo)}
+                  </p>
+                </div>
+              )}
+              {benchmarkPreco.label === "faixa" && (
+                <p className="text-sm text-am-text">
+                  Faixa de referência:{" "}
+                  <span className="font-bold text-am-navy">
+                    {formatarMoeda(benchmarkPreco.minimo)} – {formatarMoeda(benchmarkPreco.maximo)}
+                  </span>
+                </p>
+              )}
+              {benchmarkPreco.label === "referência" && (
+                <p className="text-sm text-am-text">
+                  Referência:{" "}
+                  <span className="font-bold text-am-navy">{formatarMoeda(benchmarkPreco.minimo)}</span>
+                </p>
+              )}
+            </div>
+            {benchmarkPreco.desvio_pct_atual != null && (
+              <div className="text-right shrink-0">
+                <p className={`text-2xl font-bold font-mono-num ${benchmarkPreco.desvio_pct_atual > 0 ? "text-am-danger" : "text-am-positive"}`}>
+                  {benchmarkPreco.desvio_pct_atual > 0 ? "+" : ""}{benchmarkPreco.desvio_pct_atual.toFixed(1)}%
+                </p>
+                <p className="text-[10px] text-am-text-secondary">
+                  vs {benchmarkPreco.label} histórica
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
       )}
 
       {carregandoDetalhe ? (

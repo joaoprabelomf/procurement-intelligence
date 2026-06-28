@@ -290,7 +290,8 @@ def rodar_etapa7(estudo, session_id: str | None = None, time_id: int | None = No
         msg = "Nem comparação técnica (Etapa 5) nem equalização comercial (Etapa 6) disponíveis — Etapa 7 não pôde rodar."
         estudo.add_faltante(msg)
         estudo.recomendacoes = None
-        return {"tem_dados": False, "analise": None, "resumo": f"⚠️ {msg}", "casos_consultados": 0}
+        from . import qualidade as _qualidade
+        return {"tem_dados": False, "analise": None, "resumo": f"⚠️ {msg}", "casos_consultados": 0, "confianca_etapa": _qualidade.calcular_confianca_etapa(estudo, 7)}
 
     # ---------------------------------------------------------------------------
     # RAG — micro_categoria já definida pela Etapa 2; sem pré-extração necessária
@@ -365,7 +366,9 @@ def rodar_etapa7(estudo, session_id: str | None = None, time_id: int | None = No
     estudo.etapa_atual = 7
 
     resumo = _montar_resumo(analise)
-    return {"tem_dados": True, "analise": analise, "resumo": resumo, "casos_consultados": len(casos_historicos)}
+    from . import qualidade as _qualidade
+    confianca_etapa = _qualidade.calcular_confianca_etapa(estudo, 7)
+    return {"tem_dados": True, "analise": analise, "resumo": resumo, "casos_consultados": len(casos_historicos), "confianca_etapa": confianca_etapa}
 
 
 def _montar_resumo(analise: dict) -> str:

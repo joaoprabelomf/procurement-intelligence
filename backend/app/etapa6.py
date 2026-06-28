@@ -35,8 +35,11 @@ O que faz:
 """
 
 import json
+import logging
 import time
 from io import BytesIO
+
+logger = logging.getLogger(__name__)
 
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
@@ -261,26 +264,30 @@ def confirmar_taxa_e_moeda(estudo, taxa_desconto: float, regra_moeda: str) -> st
 # Função principal
 # ---------------------------------------------------------------------------
 
-def rodar_etapa6(estudo) -> dict:
+def rodar_etapa6(estudo, session_id: str | None = None, time_id: int | None = None) -> dict:
     """
     Executa a Etapa 6 completa. NÃO chama a IA se o checkpoint de taxa de
     desconto/moeda ainda não foi respondido — quem chama esta função deve
     checar precisa_checkpoint_etapa6(estudo) antes.
 
+    session_id e time_id são opcionais — quando presentes, ativam o cálculo
+    de benchmark de savings histórico do time.
+
     Retorna dict com:
-        - tem_dados : bool
-        - analise   : dict completo (JSON do Claude) ou None
-        - resumo    : texto legível pra UI
+        - tem_dados        : bool
+        - analise          : dict completo (JSON do Claude) ou None
+        - resumo           : texto legível pra UI
+        - benchmark_savings: dict | None
     """
     if precisa_checkpoint_etapa6(estudo):
         msg = "Taxa de desconto e/ou moeda de referência ainda não informadas — Etapa 6 não pode rodar."
-        return {"tem_dados": False, "analise": None, "resumo": f"⚠️ {msg}"}
+        return {"tem_dados": False, "analise": None, "resumo": f"⚠️ {msg}", "benchmark_savings": None}
 
     if not estudo.propostas_comerciais:
         msg = "Nenhuma proposta comercial extraída (Etapa 4B) — Etapa 6 não pôde rodar."
         estudo.add_faltante(msg)
         estudo.equalizacao_comercial = None
-        return {"tem_dados": False, "analise": None, "resumo": f"⚠️ {msg}"}
+        return {"tem_dados": False, "analise": None, "resumo": f"⚠️ {msg}", "benchmark_savings": None}
 
     n_forn = len(estudo.propostas_comerciais)
     if n_forn <= 4:
@@ -340,8 +347,25 @@ def rodar_etapa6(estudo) -> dict:
 
     estudo.etapa_atual = 6
 
+    # ---------------------------------------------------------------------------
+    # BENCHMARK SAVINGS — cálculo determinístico de savings histórico (nunca trava)
+    # Roda após o parse para isolar falhas do fluxo principal.
+    # ---------------------------------------------------------------------------
+    benchmark_savings = None
+    if session_id and time_id and estudo.micro_categoria:
+        try:
+            from . import database as _db
+            benchmark_savings = _db.calcular_benchmark_savings(
+                micro_categoria=estudo.micro_categoria,
+                time_id=time_id,
+                excluir_session_id=session_id,
+            )
+        except Exception as exc:
+            logger.debug("[BENCHMARK_SAVINGS] calcular_benchmark_savings falhou silenciosamente: %s", exc)
+    # ---------------------------------------------------------------------------
+
     resumo = _montar_resumo(analise)
-    return {"tem_dados": True, "analise": analise, "resumo": resumo}
+    return {"tem_dados": True, "analise": analise, "resumo": resumo, "benchmark_savings": benchmark_savings}
 
 
 def _montar_resumo(analise: dict) -> str:

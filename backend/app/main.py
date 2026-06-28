@@ -683,9 +683,9 @@ def confirmar_checkpoint_etapa6_rota(session_id: str, body: Etapa6CheckpointRequ
 
 
 @app.post("/sessoes/{session_id}/etapa6/rodar")
-def rodar_etapa6_rota(session_id: str, _: _AuthSessao):
+def rodar_etapa6_rota(session_id: str, usuario: _AuthSessao):
     estudo = _get_estudo(session_id)
-    return etapa6.rodar_etapa6(estudo)
+    return etapa6.rodar_etapa6(estudo, session_id=session_id, time_id=usuario["time_id"])
 
 
 @app.get("/sessoes/{session_id}/etapa6/fornecedores")
@@ -954,7 +954,7 @@ def _rodar_uma_etapa(estudo, numero, session_id: str | None = None, time_id: int
     if numero == 5:
         return etapa5.rodar_etapa5(estudo)
     if numero == 6:
-        return etapa6.rodar_etapa6(estudo)
+        return etapa6.rodar_etapa6(estudo, session_id=session_id, time_id=time_id)
     if numero == 7:
         return etapa7.rodar_etapa7(estudo, session_id=session_id, time_id=time_id)
     if numero == 8:

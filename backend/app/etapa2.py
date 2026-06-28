@@ -265,6 +265,8 @@ def rodar_etapa2(estudo, session_id: str | None = None, time_id: int | None = No
             "Análise de savings será relativa entre propostas, sem âncora de custo atual."
         )
         estudo.add_faltante(msg)
+        from . import qualidade as _qualidade
+        confianca_etapa_sem_baseline = _qualidade.calcular_confianca_etapa(estudo, 2)
         return {
             "tem_baseline": False,
             "analise": None,
@@ -272,6 +274,8 @@ def rodar_etapa2(estudo, session_id: str | None = None, time_id: int | None = No
             "resumo": f"⚠️ {msg}",
             "casos_consultados": 0,
             "micro_categoria_hint": None,
+            "benchmark_preco": None,
+            "confianca_etapa": confianca_etapa_sem_baseline,
         }
 
     # 2. Montar texto do baseline
@@ -362,6 +366,31 @@ def rodar_etapa2(estudo, session_id: str | None = None, time_id: int | None = No
 
     estudo.etapa_atual = 2
 
+    # ---------------------------------------------------------------------------
+    # BENCHMARK — cálculo determinístico de preço histórico (nunca trava a etapa)
+    # Roda após o parse para ter preco_anual_total do estudo atual disponível.
+    # Usa micro_hint (pré-extração) com fallback para micro_categoria do Claude.
+    # ---------------------------------------------------------------------------
+    benchmark_preco = None
+    if session_id and time_id:
+        micro_para_benchmark = micro_hint or analise.get("micro_categoria")
+        preco_atual_num = (analise.get("comercial") or {}).get("preco_anual_total")
+        if micro_para_benchmark:
+            try:
+                from . import database as _db
+                benchmark_preco = _db.calcular_benchmark_preco(
+                    micro_categoria=micro_para_benchmark,
+                    time_id=time_id,
+                    excluir_session_id=session_id,
+                    preco_atual=preco_atual_num if isinstance(preco_atual_num, (int, float)) else None,
+                )
+            except Exception as exc:
+                logger.debug("[BENCHMARK] calcular_benchmark_preco falhou silenciosamente: %s", exc)
+    # ---------------------------------------------------------------------------
+
+    from . import qualidade as _qualidade
+    confianca_etapa = _qualidade.calcular_confianca_etapa(estudo, 2)
+
     return {
         "tem_baseline": True,
         "analise": analise,
@@ -369,6 +398,8 @@ def rodar_etapa2(estudo, session_id: str | None = None, time_id: int | None = No
         "resumo": resumo,
         "casos_consultados": len(casos_historicos),
         "micro_categoria_hint": micro_hint,
+        "benchmark_preco": benchmark_preco,
+        "confianca_etapa": confianca_etapa,
     }
 
 

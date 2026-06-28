@@ -475,6 +475,7 @@ export default function Cascata() {
                 equalizacao={resultadosPorEtapa[6]?.analise || {}}
                 sessionId={sessionIdRef.current}
                 casosConsultados={resultadoAtual?.casos_consultados ?? 0}
+                confiancaEtapa={resultadoAtual?.confianca_etapa ?? null}
               />
               <div className="flex justify-end">
                 {mostrarRefazer && (
@@ -513,6 +514,7 @@ export default function Cascata() {
           {fase === FASE.CONFIRMACAO && etapaVisualizada === 6 && (
             <EqualizacaoConteudo
               sessionId={sessionIdRef.current}
+              benchmarkSavings={resultadoAtual?.benchmark_savings ?? null}
               onEnviarMensagem={(mensagem) => handleEnviarCorrecao(6, mensagem)}
               onConfirmar={() => handleConfirmar(6)}
               onRefazer={() => handleRefazer(6)}
@@ -527,6 +529,8 @@ export default function Cascata() {
             <BaselineConteudo
               sessionId={sessionIdRef.current}
               casosConsultados={resultadoAtual?.casos_consultados ?? 0}
+              benchmarkPreco={resultadoAtual?.benchmark_preco ?? null}
+              confiancaEtapa={resultadoAtual?.confianca_etapa ?? null}
               onEnviarMensagem={(mensagem) => handleEnviarCorrecao(2, mensagem)}
               onConfirmar={() => handleConfirmar(2)}
               onRefazer={() => handleRefazer(2)}
@@ -567,6 +571,7 @@ export default function Cascata() {
             <RecomendacoesConteudo
               sessionId={sessionIdRef.current}
               casosConsultados={resultadoAtual?.casos_consultados ?? 0}
+              confiancaEtapa={resultadoAtual?.confianca_etapa ?? null}
               onEnviarMensagem={(mensagem) => handleEnviarCorrecao(7, mensagem)}
               onConfirmar={() => handleConfirmar(7)}
               onRefazer={() => handleRefazer(7)}
