@@ -3,6 +3,7 @@ import { Send, Check, RefreshCw, Pencil, Wallet, Tag, AlertTriangle, Gauge } fro
 import ReactMarkdown from "react-markdown";
 import Button from "./Button";
 import Card from "./Card";
+import BadgeRAG from "./BadgeRAG";
 import { resumoExecutivoEtapa2, detalheEtapa2 } from "../lib/api";
 
 function formatarMoeda(valor) {
@@ -17,6 +18,7 @@ function formatarMoeda(valor) {
 // busca, filtro ou paginação, que não fariam sentido para um objeto só.
 export default function BaselineConteudo({
   sessionId,
+  casosConsultados = 0,
   onEnviarMensagem,
   onConfirmar,
   onRefazer,
@@ -64,6 +66,8 @@ export default function BaselineConteudo({
 
   return (
     <div className="space-y-4">
+      <BadgeRAG casosConsultados={casosConsultados} />
+
       {resumo && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {kpis.map((item) => (

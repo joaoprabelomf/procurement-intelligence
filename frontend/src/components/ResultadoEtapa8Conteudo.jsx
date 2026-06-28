@@ -1,6 +1,7 @@
 import Card from "./Card";
 import MatrizKraljic from "./MatrizKraljic";
 import DownloadBar from "./DownloadBar";
+import BadgeRAG from "./BadgeRAG";
 import { urlDownloadEtapa8Word, urlDownloadEtapa8Excel, urlDownloadEtapa8Ppt } from "../lib/api";
 
 // Conteúdo visual completo do resultado da Etapa 8 (Matriz de Kraljic +
@@ -15,11 +16,13 @@ import { urlDownloadEtapa8Word, urlDownloadEtapa8Excel, urlDownloadEtapa8Ppt } f
 //
 // analise: estudo.estrategia_categoria
 // equalizacao: estudo.equalizacao_comercial
-export default function ResultadoEtapa8Conteudo({ analise, equalizacao, sessionId }) {
+export default function ResultadoEtapa8Conteudo({ analise, equalizacao, sessionId, casosConsultados = 0 }) {
   const fornecedores = equalizacao?.por_fornecedor || [];
 
   return (
     <div className="space-y-4">
+      <BadgeRAG casosConsultados={casosConsultados} />
+
       <div className="grid grid-cols-1 md:grid-cols-[1.15fr_1fr] gap-4">
         <Card title="Matriz de Kraljic" subtitle="Complexidade de suprimento × impacto financeiro">
           <MatrizKraljic

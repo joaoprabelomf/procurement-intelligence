@@ -474,6 +474,7 @@ export default function Cascata() {
                 analise={resultadoAtual?.analise || {}}
                 equalizacao={resultadosPorEtapa[6]?.analise || {}}
                 sessionId={sessionIdRef.current}
+                casosConsultados={resultadoAtual?.casos_consultados ?? 0}
               />
               <div className="flex justify-end">
                 {mostrarRefazer && (
@@ -525,6 +526,7 @@ export default function Cascata() {
           {fase === FASE.CONFIRMACAO && etapaVisualizada === 2 && (
             <BaselineConteudo
               sessionId={sessionIdRef.current}
+              casosConsultados={resultadoAtual?.casos_consultados ?? 0}
               onEnviarMensagem={(mensagem) => handleEnviarCorrecao(2, mensagem)}
               onConfirmar={() => handleConfirmar(2)}
               onRefazer={() => handleRefazer(2)}
@@ -564,6 +566,7 @@ export default function Cascata() {
           {fase === FASE.CONFIRMACAO && etapaVisualizada === 7 && (
             <RecomendacoesConteudo
               sessionId={sessionIdRef.current}
+              casosConsultados={resultadoAtual?.casos_consultados ?? 0}
               onEnviarMensagem={(mensagem) => handleEnviarCorrecao(7, mensagem)}
               onConfirmar={() => handleConfirmar(7)}
               onRefazer={() => handleRefazer(7)}
