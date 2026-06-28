@@ -440,9 +440,9 @@ def pontos_atencao_etapa1_rota(session_id: str, _: _AuthSessao):
 # ---------------------------------------------------------------------------
 
 @app.post("/sessoes/{session_id}/etapa2/rodar")
-def rodar_etapa2_rota(session_id: str, _: _AuthSessao):
+def rodar_etapa2_rota(session_id: str, usuario: _AuthSessao):
     estudo = _get_estudo(session_id)
-    return etapa2.rodar_etapa2(estudo)
+    return etapa2.rodar_etapa2(estudo, session_id=session_id, time_id=usuario["time_id"])
 
 
 @app.post("/sessoes/{session_id}/etapa2/confirmar-anualizacao")
@@ -779,9 +779,9 @@ def download_ppt_etapa6(session_id: str, _: _AuthSessao):
 # ---------------------------------------------------------------------------
 
 @app.post("/sessoes/{session_id}/etapa7/rodar")
-def rodar_etapa7_rota(session_id: str, _: _AuthSessao):
+def rodar_etapa7_rota(session_id: str, usuario: _AuthSessao):
     estudo = _get_estudo(session_id)
-    return etapa7.rodar_etapa7(estudo)
+    return etapa7.rodar_etapa7(estudo, session_id=session_id, time_id=usuario["time_id"])
 
 
 @app.get("/sessoes/{session_id}/etapa7/resumo-executivo")
@@ -844,13 +844,15 @@ def download_ppt_etapa7(session_id: str, _: _AuthSessao):
 # ---------------------------------------------------------------------------
 
 @app.post("/sessoes/{session_id}/etapa8/rodar")
-def rodar_etapa8_rota(session_id: str, body: Etapa8Request, _: _AuthSessao):
+def rodar_etapa8_rota(session_id: str, body: Etapa8Request, usuario: _AuthSessao):
     estudo = _get_estudo(session_id)
     return etapa8.rodar_etapa8(
         estudo,
         categoria_manual=body.categoria_manual,
         impacto_manual=body.impacto_manual,
         risco_manual=body.risco_manual,
+        session_id=session_id,
+        time_id=usuario["time_id"],
     )
 
 
@@ -922,7 +924,7 @@ def download_ppt_etapa8(session_id: str, _: _AuthSessao):
 # dependem dela, precisam ser recalculadas para não ficarem inconsistentes.
 # ---------------------------------------------------------------------------
 
-def _rodar_uma_etapa(estudo, numero):
+def _rodar_uma_etapa(estudo, numero, session_id: str | None = None, time_id: int | None = None):
     """
     Roda uma única etapa pelo número (1, 2, 3, 4, "4b", 5, 6, 7, 8) e devolve
     seu resultado — mesma função que cada rota individual já chama, só
@@ -934,12 +936,15 @@ def _rodar_uma_etapa(estudo, numero):
 
     Para a Etapa 6: NÃO roda se o checkpoint de taxa/moeda ainda não foi
     preenchido — a chamada quem decide parar é quem chama esta função.
+
+    session_id e time_id são opcionais — passados para etapas que suportam
+    injeção de memória RAG (Etapa 2). Se ausentes, a etapa roda sem memória.
     """
     if numero == 1:
         documentos_lidos = [{"nome": d["nome"], "texto": d.get("texto", "")} for d in estudo.documentos]
         return etapa1.rodar_etapa1(estudo, documentos_lidos)
     if numero == 2:
-        return etapa2.rodar_etapa2(estudo)
+        return etapa2.rodar_etapa2(estudo, session_id=session_id, time_id=time_id)
     if numero == 3:
         return etapa3.rodar_etapa3(estudo)
     if numero == 4:
@@ -951,14 +956,14 @@ def _rodar_uma_etapa(estudo, numero):
     if numero == 6:
         return etapa6.rodar_etapa6(estudo)
     if numero == 7:
-        return etapa7.rodar_etapa7(estudo)
+        return etapa7.rodar_etapa7(estudo, session_id=session_id, time_id=time_id)
     if numero == 8:
-        return etapa8.rodar_etapa8(estudo)
+        return etapa8.rodar_etapa8(estudo, session_id=session_id, time_id=time_id)
     raise ValueError(f"Número de etapa desconhecido: {numero}")
 
 
 @app.post("/sessoes/{session_id}/recascatear/{etapa_inicial}")
-def recascatear_a_partir_de(session_id: str, etapa_inicial: str, _: _AuthSessao):
+def recascatear_a_partir_de(session_id: str, etapa_inicial: str, usuario: _AuthSessao):
     """
     Refaz a etapa informada e propaga automaticamente para todas as etapas
     seguintes do pipeline, na ordem real de execução (incluindo a 4B, que
@@ -989,7 +994,7 @@ def recascatear_a_partir_de(session_id: str, etapa_inicial: str, _: _AuthSessao)
         if numero == 6 and etapa6.precisa_checkpoint_etapa6(estudo):
             parou_em = "6_checkpoint"
             break
-        resultado = _rodar_uma_etapa(estudo, numero)
+        resultado = _rodar_uma_etapa(estudo, numero, session_id=session_id, time_id=usuario["time_id"])
         etapas_executadas.append({"etapa": numero, "resultado": resultado})
         if numero == 8 and (resultado.get("falta_impacto") or resultado.get("falta_risco")):
             parou_em = "8_checkpoint"

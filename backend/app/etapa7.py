@@ -18,7 +18,10 @@ O que faz:
 """
 
 import json
+import logging
 from io import BytesIO
+
+logger = logging.getLogger(__name__)
 
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
@@ -34,6 +37,46 @@ from .ia import call_claude
 from .erros import ErroEtapa
 
 MAX_TOKENS_ETAPA7 = 8000
+
+# ---------------------------------------------------------------------------
+# Memória RAG — referências históricas para recomendações (Parte 3)
+# ---------------------------------------------------------------------------
+
+_INSTRUCAO_REFERENCIAS_E7 = (
+    "\n\nA mensagem do usuário contém uma seção '--- REFERÊNCIAS HISTÓRICAS DO SEU TIME ---' "
+    "com dados reais de estudos anteriores do mesmo time na mesma micro-categoria. "
+    "Use como REFERÊNCIA para enriquecer a síntese — por exemplo, para contextualizar "
+    "trade-offs recorrentes, padrões de savings ou alavancas de negociação típicas desta "
+    "categoria. Cada processo é único: não copie conclusões históricas diretamente; "
+    "use-as para dar mais profundidade à análise do caso atual."
+)
+
+
+def _montar_secao_referencias_etapa7(casos: list[dict]) -> str:
+    n = len(casos)
+    linhas = [
+        f"\n--- REFERÊNCIAS HISTÓRICAS DO SEU TIME ({n} caso(s) similar(es)) ---",
+        "Use como REFERÊNCIA para enriquecer recomendações. Cada processo é único.",
+        "",
+    ]
+    for i, caso in enumerate(casos, start=1):
+        linhas.append(f"Caso {i}:")
+        if caso.get("savings_referencia"):
+            linhas.append(f"  Savings realizados: {caso['savings_referencia']}")
+        cenarios = caso.get("cenarios_decisao") or []
+        if cenarios:
+            linhas.append("  Cenários de decisão usados:")
+            for c in cenarios:
+                linhas.append(f"    • {c['nome']}: {c['descricao']}")
+                linhas.append(f"      Trade-off: {c['trade_off']}")
+        alavancas = caso.get("alavancas_negociacao") or []
+        if alavancas:
+            linhas.append(f"  Alavancas de negociação identificadas: {'; '.join(alavancas)}")
+        if caso.get("leitura_final"):
+            linhas.append(f"  Leitura final: {caso['leitura_final']}")
+        linhas.append("")
+    linhas.append("--- FIM DAS REFERÊNCIAS ---\n")
+    return "\n".join(linhas)
 
 
 # ---------------------------------------------------------------------------
@@ -230,20 +273,61 @@ def _parse_resposta(resposta_bruta: str) -> dict:
 # Função principal
 # ---------------------------------------------------------------------------
 
-def rodar_etapa7(estudo) -> dict:
+def rodar_etapa7(estudo, session_id: str | None = None, time_id: int | None = None) -> dict:
     """
     Executa a Etapa 7 completa.
 
+    session_id e time_id são opcionais — quando presentes, ativam a injeção de
+    referências históricas do time (memória RAG). Sem eles, roda como antes.
+
     Retorna dict com:
-        - tem_dados : bool
-        - analise   : dict completo (JSON do Claude) ou None
-        - resumo    : texto legível pra UI
+        - tem_dados          : bool
+        - analise            : dict completo (JSON do Claude) ou None
+        - resumo             : texto legível pra UI
+        - casos_consultados  : int (0 se sem histórico)
     """
     if not estudo.comparacao_tecnica and not estudo.equalizacao_comercial:
         msg = "Nem comparação técnica (Etapa 5) nem equalização comercial (Etapa 6) disponíveis — Etapa 7 não pôde rodar."
         estudo.add_faltante(msg)
         estudo.recomendacoes = None
-        return {"tem_dados": False, "analise": None, "resumo": f"⚠️ {msg}"}
+        return {"tem_dados": False, "analise": None, "resumo": f"⚠️ {msg}", "casos_consultados": 0}
+
+    # ---------------------------------------------------------------------------
+    # RAG — micro_categoria já definida pela Etapa 2; sem pré-extração necessária
+    # ---------------------------------------------------------------------------
+    casos_historicos = []
+    secao_referencias = ""
+    system_e7 = SYSTEM_RECOMENDACOES
+
+    if session_id and time_id and estudo.micro_categoria:
+        from . import database
+        casos_historicos = database.buscar_casos_similares(
+            micro_categoria=estudo.micro_categoria,
+            time_id=time_id,
+            excluir_session_id=session_id,
+            extrator=database.montar_resumo_etapa7,
+        )
+        if casos_historicos:
+            secao_referencias = _montar_secao_referencias_etapa7(casos_historicos)
+            system_e7 = SYSTEM_RECOMENDACOES + _INSTRUCAO_REFERENCIAS_E7
+            logger.info(
+                "[RAG] Etapa 7 — micro_categoria: '%s' | %d caso(s): %s",
+                estudo.micro_categoria, len(casos_historicos),
+                [c["session_id"] for c in casos_historicos],
+            )
+            print(f"\n{'='*60}")
+            print(f"[RAG] Etapa 7 — referências históricas injetadas")
+            print(f"  micro_categoria : {estudo.micro_categoria!r}")
+            print(f"  casos           : {len(casos_historicos)}")
+            for c in casos_historicos:
+                print(f"    • {c['session_id']} — {c['micro_categoria']}")
+            print(f"\n[RAG] SEÇÃO INJETADA NO CONTEXTO:")
+            print(secao_referencias)
+            print(f"{'='*60}\n")
+        else:
+            logger.info("[RAG] Etapa 7 — sem histórico para '%s' (rodando sem memória)", estudo.micro_categoria)
+            print(f"[RAG] Etapa 7 — sem histórico para '{estudo.micro_categoria}' (rodando sem memória)")
+    # ---------------------------------------------------------------------------
 
     contexto = (
         f"Categoria: {estudo.categoria}\n"
@@ -252,11 +336,12 @@ def rodar_etapa7(estudo) -> dict:
         f"{_resumo_equalizacao_comercial_ctx(estudo)}\n\n"
         f"{_resumo_propostas_tecnicas_ctx(estudo)}\n\n"
         f"{_resumo_propostas_comerciais_ctx(estudo)}"
+        f"{secao_referencias}"
     )
 
     resposta_bruta = call_claude(
         messages=[{"role": "user", "content": contexto}],
-        system=SYSTEM_RECOMENDACOES,
+        system=system_e7,
         max_tokens=MAX_TOKENS_ETAPA7,
     )
 
@@ -280,7 +365,7 @@ def rodar_etapa7(estudo) -> dict:
     estudo.etapa_atual = 7
 
     resumo = _montar_resumo(analise)
-    return {"tem_dados": True, "analise": analise, "resumo": resumo}
+    return {"tem_dados": True, "analise": analise, "resumo": resumo, "casos_consultados": len(casos_historicos)}
 
 
 def _montar_resumo(analise: dict) -> str:

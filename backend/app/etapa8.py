@@ -26,7 +26,10 @@ Sobre o risco de suprimento (decisão do usuário: "os dois"):
 """
 
 import json
+import logging
 from io import BytesIO
+
+logger = logging.getLogger(__name__)
 
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
@@ -40,6 +43,48 @@ from openpyxl.utils import get_column_letter
 
 from .ia import call_claude, call_claude_com_busca
 from .erros import ErroEtapa
+
+# ---------------------------------------------------------------------------
+# Memória RAG — referências históricas para estratégia Kraljic (Parte 3)
+# ---------------------------------------------------------------------------
+
+_INSTRUCAO_REFERENCIAS_E8 = (
+    "\n\nA mensagem do usuário contém uma seção '--- REFERÊNCIAS HISTÓRICAS DO SEU TIME ---' "
+    "com dados reais de estudos anteriores do mesmo time na mesma micro-categoria. "
+    "Use como REFERÊNCIA para enriquecer a estratégia — em especial o quadrante Kraljic "
+    "histórico, o risco de suprimento e as ações táticas que já foram usadas. "
+    "NÃO copie o quadrante histórico automaticamente: avalie o caso atual com base nos "
+    "dados fornecidos e use o histórico apenas como benchmark e contexto."
+)
+
+
+def _montar_secao_referencias_etapa8(casos: list[dict]) -> str:
+    n = len(casos)
+    linhas = [
+        f"\n--- REFERÊNCIAS HISTÓRICAS DO SEU TIME ({n} caso(s) similar(es)) ---",
+        "Use como REFERÊNCIA para calibrar a estratégia. Avalie o caso atual de forma independente.",
+        "",
+    ]
+    for i, caso in enumerate(casos, start=1):
+        linhas.append(f"Caso {i}:")
+        quadrante = caso.get("kraljic_quadrante")
+        if quadrante:
+            impacto = caso.get("kraljic_impacto") or "—"
+            risco = caso.get("kraljic_risco") or "—"
+            linhas.append(f"  Quadrante Kraljic histórico: {quadrante} (impacto {impacto}, risco {risco})")
+        if caso.get("kraljic_resumo_posicao"):
+            linhas.append(f"  Posição: {caso['kraljic_resumo_posicao']}")
+        if caso.get("estrategia_recomendada"):
+            linhas.append(f"  Estratégia usada: {caso['estrategia_recomendada']}")
+        acoes = caso.get("acoes_taticas_top3") or []
+        if acoes:
+            linhas.append(f"  Ações táticas: {' | '.join(acoes)}")
+        alertas = caso.get("alertas") or []
+        if alertas:
+            linhas.append(f"  Alertas estratégicos: {'; '.join(alertas)}")
+        linhas.append("")
+    linhas.append("--- FIM DAS REFERÊNCIAS ---\n")
+    return "\n".join(linhas)
 
 MAX_TOKENS_ETAPA8 = 8000
 
@@ -273,7 +318,14 @@ def confirmar_risco_suprimento(estudo, risco: str) -> str:
 # Função principal
 # ---------------------------------------------------------------------------
 
-def rodar_etapa8(estudo, categoria_manual=None, impacto_manual=None, risco_manual=None) -> dict:
+def rodar_etapa8(
+    estudo,
+    categoria_manual=None,
+    impacto_manual=None,
+    risco_manual=None,
+    session_id: str | None = None,
+    time_id: int | None = None,
+) -> dict:
     """
     Executa a Etapa 8 (Estratégia da Categoria).
 
@@ -282,11 +334,15 @@ def rodar_etapa8(estudo, categoria_manual=None, impacto_manual=None, risco_manua
         - impacto_manual   : "alto"|"baixo" — sobrescreve a inferência de impacto
         - risco_manual     : "alto"|"baixo" — sobrescreve a pesquisa de risco
 
+    session_id e time_id são opcionais — quando presentes, ativam injeção de
+    referências históricas de Kraljic no contexto da chamada de estratégia.
+
     Retorna dict com:
-        - tem_dados : bool
-        - analise   : dict completo ou None
-        - resumo    : texto legível
-        - precisa_categoria : bool (True se não há categoria nem do Estudo nem manual)
+        - tem_dados         : bool
+        - analise           : dict completo ou None
+        - resumo            : texto legível
+        - precisa_categoria : bool
+        - casos_consultados : int (0 se sem histórico)
     """
     categoria = _resolver_categoria(estudo, categoria_manual)
     if not categoria:
@@ -295,6 +351,7 @@ def rodar_etapa8(estudo, categoria_manual=None, impacto_manual=None, risco_manua
             "analise": None,
             "resumo": "⚠️ Nenhuma categoria identificada. Informe a categoria de compra para rodar a Etapa 8.",
             "precisa_categoria": True,
+            "casos_consultados": 0,
         }
 
     # --- Eixo de impacto financeiro ---
@@ -347,10 +404,50 @@ def rodar_etapa8(estudo, categoria_manual=None, impacto_manual=None, risco_manua
             "falta_risco": risco not in ("alto", "baixo"),
             "categoria": categoria,
             "analise_risco": analise_risco,
+            "casos_consultados": 0,
         }
 
     # --- Quadrante Kraljic ---
     quadrante = QUADRANTES[(impacto, risco)]
+
+    # ---------------------------------------------------------------------------
+    # RAG — busca por casos Kraljic históricos da mesma micro_categoria
+    # Injeta APÓS definir o quadrante atual para que a referência histórica
+    # não interfira na pesquisa de risco (a memória complementa, não substitui).
+    # ---------------------------------------------------------------------------
+    casos_historicos = []
+    secao_referencias = ""
+    system_e8 = SYSTEM_ESTRATEGIA
+
+    if session_id and time_id and categoria:
+        from . import database
+        casos_historicos = database.buscar_casos_similares(
+            micro_categoria=categoria,
+            time_id=time_id,
+            excluir_session_id=session_id,
+            extrator=database.montar_resumo_etapa8,
+        )
+        if casos_historicos:
+            secao_referencias = _montar_secao_referencias_etapa8(casos_historicos)
+            system_e8 = SYSTEM_ESTRATEGIA + _INSTRUCAO_REFERENCIAS_E8
+            logger.info(
+                "[RAG] Etapa 8 — categoria: '%s' | %d caso(s): %s",
+                categoria, len(casos_historicos),
+                [c["session_id"] for c in casos_historicos],
+            )
+            print(f"\n{'='*60}")
+            print(f"[RAG] Etapa 8 — referências históricas injetadas")
+            print(f"  categoria : {categoria!r}")
+            print(f"  casos     : {len(casos_historicos)}")
+            for c in casos_historicos:
+                print(f"    • {c['session_id']} — quadrante: {c.get('kraljic_quadrante','?')}")
+            print(f"\n[RAG] SEÇÃO INJETADA NO CONTEXTO:")
+            print(secao_referencias)
+            print(f"{'='*60}\n")
+        else:
+            logger.info("[RAG] Etapa 8 — sem histórico para '%s' (rodando sem memória)", categoria)
+            print(f"[RAG] Etapa 8 — sem histórico para '{categoria}' (rodando sem memória)")
+    # ---------------------------------------------------------------------------
 
     # --- Estratégia (chamada de IA, sem busca) ---
     contexto = (
@@ -362,10 +459,11 @@ def rodar_etapa8(estudo, categoria_manual=None, impacto_manual=None, risco_manua
     )
     if analise_risco:
         contexto += f"\nJustificativa do risco (da pesquisa): {analise_risco.get('justificativa', '—')}"
+    contexto += secao_referencias
 
     resposta_bruta = call_claude(
         messages=[{"role": "user", "content": contexto}],
-        system=SYSTEM_ESTRATEGIA,
+        system=system_e8,
         max_tokens=MAX_TOKENS_ETAPA8,
     )
 
@@ -392,7 +490,7 @@ def rodar_etapa8(estudo, categoria_manual=None, impacto_manual=None, risco_manua
     estudo.etapa_atual = 8
 
     resumo = _montar_resumo(analise)
-    return {"tem_dados": True, "analise": analise, "resumo": resumo, "precisa_categoria": False}
+    return {"tem_dados": True, "analise": analise, "resumo": resumo, "precisa_categoria": False, "casos_consultados": len(casos_historicos)}
 
 
 def _montar_resumo(analise: dict) -> str:

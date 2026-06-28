@@ -3,6 +3,7 @@ import { Send, Check, RefreshCw, Pencil, TrendingDown, Trophy, GitBranch, Handsh
 import ReactMarkdown from "react-markdown";
 import Button from "./Button";
 import Card from "./Card";
+import BadgeRAG from "./BadgeRAG";
 import DownloadBar from "./DownloadBar";
 import { resumoExecutivoEtapa7, conteudoEtapa7, urlDownloadEtapa7Word, urlDownloadEtapa7Excel, urlDownloadEtapa7Ppt } from "../lib/api";
 
@@ -18,6 +19,7 @@ function formatarMoeda(valor) {
 // própria etapa (nenhum ranking visual entre "três melhores").
 export default function RecomendacoesConteudo({
   sessionId,
+  casosConsultados = 0,
   onEnviarMensagem,
   onConfirmar,
   onRefazer,
@@ -65,6 +67,8 @@ export default function RecomendacoesConteudo({
 
   return (
     <div className="space-y-4">
+      <BadgeRAG casosConsultados={casosConsultados} />
+
       {resumo && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {kpis.map((item) => (
