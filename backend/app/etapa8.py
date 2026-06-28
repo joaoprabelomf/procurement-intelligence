@@ -352,6 +352,7 @@ def rodar_etapa8(
             "resumo": "⚠️ Nenhuma categoria identificada. Informe a categoria de compra para rodar a Etapa 8.",
             "precisa_categoria": True,
             "casos_consultados": 0,
+            "confianca_etapa": None,
         }
 
     # --- Eixo de impacto financeiro ---
@@ -405,6 +406,7 @@ def rodar_etapa8(
             "categoria": categoria,
             "analise_risco": analise_risco,
             "casos_consultados": 0,
+            "confianca_etapa": None,
         }
 
     # --- Quadrante Kraljic ---
@@ -490,7 +492,9 @@ def rodar_etapa8(
     estudo.etapa_atual = 8
 
     resumo = _montar_resumo(analise)
-    return {"tem_dados": True, "analise": analise, "resumo": resumo, "precisa_categoria": False, "casos_consultados": len(casos_historicos)}
+    from . import qualidade as _qualidade
+    confianca_etapa = _qualidade.calcular_confianca_etapa(estudo, 8)
+    return {"tem_dados": True, "analise": analise, "resumo": resumo, "precisa_categoria": False, "casos_consultados": len(casos_historicos), "confianca_etapa": confianca_etapa}
 
 
 def _montar_resumo(analise: dict) -> str:

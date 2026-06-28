@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import Button from "./Button";
 import Card from "./Card";
 import BadgeRAG from "./BadgeRAG";
+import BadgeConfianca from "./BadgeConfianca";
 import { resumoExecutivoEtapa2, detalheEtapa2 } from "../lib/api";
 
 function formatarMoeda(valor) {
@@ -20,6 +21,7 @@ export default function BaselineConteudo({
   sessionId,
   casosConsultados = 0,
   benchmarkPreco = null,
+  confiancaEtapa = null,
   onEnviarMensagem,
   onConfirmar,
   onRefazer,
@@ -67,7 +69,12 @@ export default function BaselineConteudo({
 
   return (
     <div className="space-y-4">
-      <BadgeRAG casosConsultados={casosConsultados} />
+      {(confiancaEtapa || casosConsultados > 0) && (
+        <div className="flex flex-wrap gap-2">
+          <BadgeConfianca confiancaEtapa={confiancaEtapa} />
+          <BadgeRAG casosConsultados={casosConsultados} />
+        </div>
+      )}
 
       {resumo && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

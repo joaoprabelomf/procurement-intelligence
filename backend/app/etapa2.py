@@ -265,6 +265,8 @@ def rodar_etapa2(estudo, session_id: str | None = None, time_id: int | None = No
             "Análise de savings será relativa entre propostas, sem âncora de custo atual."
         )
         estudo.add_faltante(msg)
+        from . import qualidade as _qualidade
+        confianca_etapa_sem_baseline = _qualidade.calcular_confianca_etapa(estudo, 2)
         return {
             "tem_baseline": False,
             "analise": None,
@@ -272,6 +274,8 @@ def rodar_etapa2(estudo, session_id: str | None = None, time_id: int | None = No
             "resumo": f"⚠️ {msg}",
             "casos_consultados": 0,
             "micro_categoria_hint": None,
+            "benchmark_preco": None,
+            "confianca_etapa": confianca_etapa_sem_baseline,
         }
 
     # 2. Montar texto do baseline
@@ -384,6 +388,9 @@ def rodar_etapa2(estudo, session_id: str | None = None, time_id: int | None = No
                 logger.debug("[BENCHMARK] calcular_benchmark_preco falhou silenciosamente: %s", exc)
     # ---------------------------------------------------------------------------
 
+    from . import qualidade as _qualidade
+    confianca_etapa = _qualidade.calcular_confianca_etapa(estudo, 2)
+
     return {
         "tem_baseline": True,
         "analise": analise,
@@ -392,6 +399,7 @@ def rodar_etapa2(estudo, session_id: str | None = None, time_id: int | None = No
         "casos_consultados": len(casos_historicos),
         "micro_categoria_hint": micro_hint,
         "benchmark_preco": benchmark_preco,
+        "confianca_etapa": confianca_etapa,
     }
 
 

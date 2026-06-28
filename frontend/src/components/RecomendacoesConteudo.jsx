@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import Button from "./Button";
 import Card from "./Card";
 import BadgeRAG from "./BadgeRAG";
+import BadgeConfianca from "./BadgeConfianca";
 import DownloadBar from "./DownloadBar";
 import { resumoExecutivoEtapa7, conteudoEtapa7, urlDownloadEtapa7Word, urlDownloadEtapa7Excel, urlDownloadEtapa7Ppt } from "../lib/api";
 
@@ -20,6 +21,7 @@ function formatarMoeda(valor) {
 export default function RecomendacoesConteudo({
   sessionId,
   casosConsultados = 0,
+  confiancaEtapa = null,
   onEnviarMensagem,
   onConfirmar,
   onRefazer,
@@ -67,7 +69,12 @@ export default function RecomendacoesConteudo({
 
   return (
     <div className="space-y-4">
-      <BadgeRAG casosConsultados={casosConsultados} />
+      {(confiancaEtapa || casosConsultados > 0) && (
+        <div className="flex flex-wrap gap-2">
+          <BadgeConfianca confiancaEtapa={confiancaEtapa} />
+          <BadgeRAG casosConsultados={casosConsultados} />
+        </div>
+      )}
 
       {resumo && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
