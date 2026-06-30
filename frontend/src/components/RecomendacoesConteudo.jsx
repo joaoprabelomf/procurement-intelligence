@@ -6,7 +6,7 @@ import Card from "./Card";
 import BadgeRAG from "./BadgeRAG";
 import BadgeConfianca from "./BadgeConfianca";
 import DownloadBar from "./DownloadBar";
-import { resumoExecutivoEtapa7, conteudoEtapa7, urlDownloadEtapa7Word, urlDownloadEtapa7Excel, urlDownloadEtapa7Ppt } from "../lib/api";
+import { resumoExecutivoEtapa7, conteudoEtapa7, baixarEtapa7Word, baixarEtapa7Excel, baixarEtapa7Ppt } from "../lib/api";
 
 function formatarMoeda(valor) {
   if (valor == null) return "—";
@@ -163,9 +163,9 @@ export default function RecomendacoesConteudo({
       )}
 
       <DownloadBar
-        urlWord={urlDownloadEtapa7Word(sessionId)}
-        urlExcel={urlDownloadEtapa7Excel(sessionId)}
-        urlPpt={urlDownloadEtapa7Ppt(sessionId)}
+        baixarWord={() => baixarEtapa7Word(sessionId)}
+        baixarExcel={() => baixarEtapa7Excel(sessionId)}
+        baixarPpt={() => baixarEtapa7Ppt(sessionId)}
         label="Entregáveis da etapa 7"
       />
 

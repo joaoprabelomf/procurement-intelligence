@@ -46,6 +46,28 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// ---------------------------------------------------------------------------
+// Download de arquivos (Word/Excel/PPT) — etapas 5 a 8
+// ---------------------------------------------------------------------------
+//
+// As rotas de download exigem o token JWT, então não dá para abrir a URL
+// direto no navegador (window.open/<a href>) — essa navegação não passa pelo
+// interceptor do axios e o backend responde 401. Em vez disso, buscamos o
+// arquivo via axios (que injeta o Bearer automaticamente), recebemos como
+// blob e simulamos o clique num link temporário para disparar o "salvar
+// arquivo" do navegador.
+async function baixarArquivo(path, nomeArquivo) {
+  const resposta = await api.get(path, { responseType: "blob" });
+  const blobUrl = window.URL.createObjectURL(resposta.data);
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = nomeArquivo;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(blobUrl);
+}
+
 // 401 fora do endpoint de login → limpa token e redireciona para /login
 api.interceptors.response.use(
   (r) => r,
@@ -124,9 +146,29 @@ export async function criarSessao() {
   return data.session_id;
 }
 
-export async function listarEstudos() {
-  const { data } = await api.get("/estudos");
+export async function listarEstudos(arquivado = false, { categoria, cliente, dataDe, dataAte } = {}) {
+  const { data } = await api.get("/estudos", {
+    params: {
+      arquivado,
+      categoria: categoria || undefined,
+      cliente: cliente || undefined,
+      data_de: dataDe || undefined,
+      data_ate: dataAte || undefined,
+    },
+  });
   return data.estudos;
+}
+
+export async function arquivarEstudo(sessionId) {
+  await api.patch(`/estudos/${sessionId}/arquivar`);
+}
+
+export async function desarquivarEstudo(sessionId) {
+  await api.patch(`/estudos/${sessionId}/desarquivar`);
+}
+
+export async function apagarEstudo(sessionId) {
+  await api.delete(`/estudos/${sessionId}`);
 }
 
 export async function obterEstadoSessao(sessionId) {
@@ -299,16 +341,16 @@ export async function detalheFornecedorEtapa5(sessionId, fornecedor) {
   return data;
 }
 
-export function urlDownloadEtapa5Word(sessionId) {
-  return `${API_URL}/sessoes/${sessionId}/etapa5/word`;
+export function baixarEtapa5Word(sessionId) {
+  return baixarArquivo(`/sessoes/${sessionId}/etapa5/word`, "comparacao_tecnica.docx");
 }
 
-export function urlDownloadEtapa5Excel(sessionId) {
-  return `${API_URL}/sessoes/${sessionId}/etapa5/excel`;
+export function baixarEtapa5Excel(sessionId) {
+  return baixarArquivo(`/sessoes/${sessionId}/etapa5/excel`, "comparacao_tecnica.xlsx");
 }
 
-export function urlDownloadEtapa5Ppt(sessionId) {
-  return `${API_URL}/sessoes/${sessionId}/etapa5/ppt`;
+export function baixarEtapa5Ppt(sessionId) {
+  return baixarArquivo(`/sessoes/${sessionId}/etapa5/ppt`, "comparacao_tecnica.pptx");
 }
 
 // ---------------------------------------------------------------------------
@@ -350,16 +392,16 @@ export async function detalheFornecedorEtapa6(sessionId, fornecedor) {
   return data;
 }
 
-export function urlDownloadEtapa6Word(sessionId) {
-  return `${API_URL}/sessoes/${sessionId}/etapa6/word`;
+export function baixarEtapa6Word(sessionId) {
+  return baixarArquivo(`/sessoes/${sessionId}/etapa6/word`, "equalizacao_comercial.docx");
 }
 
-export function urlDownloadEtapa6Excel(sessionId) {
-  return `${API_URL}/sessoes/${sessionId}/etapa6/excel`;
+export function baixarEtapa6Excel(sessionId) {
+  return baixarArquivo(`/sessoes/${sessionId}/etapa6/excel`, "equalizacao_comercial.xlsx");
 }
 
-export function urlDownloadEtapa6Ppt(sessionId) {
-  return `${API_URL}/sessoes/${sessionId}/etapa6/ppt`;
+export function baixarEtapa6Ppt(sessionId) {
+  return baixarArquivo(`/sessoes/${sessionId}/etapa6/ppt`, "equalizacao_comercial.pptx");
 }
 
 // ---------------------------------------------------------------------------
@@ -381,16 +423,16 @@ export async function conteudoEtapa7(sessionId) {
   return data;
 }
 
-export function urlDownloadEtapa7Word(sessionId) {
-  return `${API_URL}/sessoes/${sessionId}/etapa7/word`;
+export function baixarEtapa7Word(sessionId) {
+  return baixarArquivo(`/sessoes/${sessionId}/etapa7/word`, "recomendacoes_finais.docx");
 }
 
-export function urlDownloadEtapa7Excel(sessionId) {
-  return `${API_URL}/sessoes/${sessionId}/etapa7/excel`;
+export function baixarEtapa7Excel(sessionId) {
+  return baixarArquivo(`/sessoes/${sessionId}/etapa7/excel`, "recomendacoes_finais.xlsx");
 }
 
-export function urlDownloadEtapa7Ppt(sessionId) {
-  return `${API_URL}/sessoes/${sessionId}/etapa7/ppt`;
+export function baixarEtapa7Ppt(sessionId) {
+  return baixarArquivo(`/sessoes/${sessionId}/etapa7/ppt`, "recomendacoes_finais.pptx");
 }
 
 // ---------------------------------------------------------------------------
@@ -421,14 +463,14 @@ export async function confirmarRiscoEtapa8(sessionId, risco) {
   return data;
 }
 
-export function urlDownloadEtapa8Word(sessionId) {
-  return `${API_URL}/sessoes/${sessionId}/etapa8/word`;
+export function baixarEtapa8Word(sessionId) {
+  return baixarArquivo(`/sessoes/${sessionId}/etapa8/word`, "estrategia_categoria.docx");
 }
 
-export function urlDownloadEtapa8Excel(sessionId) {
-  return `${API_URL}/sessoes/${sessionId}/etapa8/excel`;
+export function baixarEtapa8Excel(sessionId) {
+  return baixarArquivo(`/sessoes/${sessionId}/etapa8/excel`, "estrategia_categoria.xlsx");
 }
 
-export function urlDownloadEtapa8Ppt(sessionId) {
-  return `${API_URL}/sessoes/${sessionId}/etapa8/ppt`;
+export function baixarEtapa8Ppt(sessionId) {
+  return baixarArquivo(`/sessoes/${sessionId}/etapa8/ppt`, "estrategia_categoria.pptx");
 }

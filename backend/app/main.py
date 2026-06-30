@@ -293,9 +293,64 @@ def health():
 
 
 @app.get("/estudos")
-def listar_estudos(usuario: _Auth):
-    """Lista estudos do time do usuário autenticado."""
-    return {"estudos": database.listar_estudos_resumo(time_id=usuario["time_id"])}
+def listar_estudos(
+    usuario: _Auth,
+    arquivado: bool = Query(False),
+    categoria: str | None = Query(None),
+    cliente: str | None = Query(None),
+    data_de: str | None = Query(None),
+    data_ate: str | None = Query(None),
+):
+    """
+    Lista estudos do time do usuário autenticado.
+    arquivado=false (padrão): retorna apenas estudos ativos.
+    arquivado=true: retorna apenas estudos arquivados.
+    categoria, cliente, data_de, data_ate: filtros opcionais (todos aditivos).
+    """
+    return {"estudos": database.listar_estudos_resumo(
+        time_id=usuario["time_id"],
+        arquivado=arquivado,
+        categoria=categoria or None,
+        cliente=cliente or None,
+        data_de=data_de or None,
+        data_ate=data_ate or None,
+    )}
+
+
+@app.patch("/estudos/{session_id}/arquivar")
+def arquivar_estudo_rota(session_id: str, admin: _Admin):
+    """
+    Arquiva um estudo do próprio time (só admin).
+    O estudo some do histórico normal e da memória RAG, mas não é apagado
+    — pode ser recuperado via desarquivar.
+    """
+    encontrado = database.arquivar_estudo(session_id, admin["time_id"])
+    if not encontrado:
+        raise HTTPException(status_code=404, detail="Estudo não encontrado neste time.")
+    return {"ok": True}
+
+
+@app.patch("/estudos/{session_id}/desarquivar")
+def desarquivar_estudo_rota(session_id: str, admin: _Admin):
+    """Restaura um estudo arquivado (só admin). O estudo volta ao histórico normal."""
+    encontrado = database.desarquivar_estudo(session_id, admin["time_id"])
+    if not encontrado:
+        raise HTTPException(status_code=404, detail="Estudo não encontrado neste time.")
+    return {"ok": True}
+
+
+@app.delete("/estudos/{session_id}")
+def apagar_estudo_rota(session_id: str, admin: _Admin):
+    """
+    Remove definitivamente um estudo do banco (só admin, só do próprio time).
+
+    IRREVERSÍVEL: o estudo desaparece do histórico e da memória RAG permanentemente.
+    A confirmação explícita é exigida pelo frontend antes de chamar esta rota.
+    """
+    encontrado = database.excluir_estudo_do_time(session_id, admin["time_id"])
+    if not encontrado:
+        raise HTTPException(status_code=404, detail="Estudo não encontrado neste time.")
+    return {"ok": True}
 
 
 @app.get("/pipeline")
