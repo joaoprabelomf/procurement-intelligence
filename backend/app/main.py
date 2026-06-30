@@ -324,6 +324,20 @@ def desarquivar_estudo_rota(session_id: str, admin: _Admin):
     return {"ok": True}
 
 
+@app.delete("/estudos/{session_id}")
+def apagar_estudo_rota(session_id: str, admin: _Admin):
+    """
+    Remove definitivamente um estudo do banco (só admin, só do próprio time).
+
+    IRREVERSÍVEL: o estudo desaparece do histórico e da memória RAG permanentemente.
+    A confirmação explícita é exigida pelo frontend antes de chamar esta rota.
+    """
+    encontrado = database.excluir_estudo_do_time(session_id, admin["time_id"])
+    if not encontrado:
+        raise HTTPException(status_code=404, detail="Estudo não encontrado neste time.")
+    return {"ok": True}
+
+
 @app.get("/pipeline")
 def listar_pipeline():
     """Devolve a declaração das 8 etapas (número, título, se tem checkpoint)."""

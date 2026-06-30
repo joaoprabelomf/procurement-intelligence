@@ -342,6 +342,27 @@ def desarquivar_estudo(session_id: str, time_id: int) -> bool:
     return n > 0
 
 
+def excluir_estudo_do_time(session_id: str, time_id: int) -> bool:
+    """
+    Remove definitivamente um estudo do banco.
+
+    Variante com verificação de time_id — usada pela rota admin de exclusão
+    permanente para garantir que um admin só pode apagar estudos do próprio time.
+    Devolve True se removeu, False se não encontrou (session_id errado ou
+    time diferente).
+
+    Não deve ser confundida com excluir_estudo (usada internamente pelo
+    sessions.py para encerrar sessões ativas — sem verificação de time).
+    """
+    with _DB_LOCK, _conectar() as conn:
+        n = conn.execute(
+            "DELETE FROM estudos WHERE session_id = ? AND time_id = ?",
+            (session_id, time_id),
+        ).rowcount
+        conn.commit()
+    return n > 0
+
+
 # ---------------------------------------------------------------------------
 # Usuários — consultas usadas pela auth (Parte 2+)
 # ---------------------------------------------------------------------------

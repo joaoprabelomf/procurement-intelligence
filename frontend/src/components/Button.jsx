@@ -17,6 +17,7 @@ export default function Button({
     accent: "bg-am-blue text-white hover:bg-am-navy",
     secondary: "bg-white text-am-navy border border-am-border hover:bg-am-bg",
     ghost: "text-am-blue hover:underline bg-transparent",
+    danger: "bg-red-600 text-white hover:bg-red-700 border border-red-700",
   };
 
   return (

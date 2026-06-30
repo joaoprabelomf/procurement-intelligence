@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { History, FolderOpen, Plus, RefreshCw, Archive, ArchiveRestore } from "lucide-react";
+import { History, FolderOpen, Plus, RefreshCw, Archive, ArchiveRestore, Trash2, TriangleAlert } from "lucide-react";
 import TopBar from "../components/TopBar";
 import Card from "../components/Card";
 import Button from "../components/Button";
@@ -10,6 +10,7 @@ import {
   extrairMensagemErro,
   arquivarEstudo,
   desarquivarEstudo,
+  apagarEstudo,
   getTokenPayload,
 } from "../lib/api";
 
@@ -55,6 +56,7 @@ export default function Historico() {
   const [erro, setErro] = useState(null);
   const [mostrarArquivados, setMostrarArquivados] = useState(false);
   const [acaoEmAndamento, setAcaoEmAndamento] = useState(null);
+  const [estudoParaApagar, setEstudoParaApagar] = useState(null);
 
   const isAdmin = getTokenPayload()?.papel === "admin";
 
@@ -104,6 +106,26 @@ export default function Historico() {
     } finally {
       setAcaoEmAndamento(null);
     }
+  }
+
+  async function handleApagar(estudo) {
+    setAcaoEmAndamento(estudo.session_id);
+    setErro(null);
+    try {
+      await apagarEstudo(estudo.session_id);
+      setEstudoParaApagar(null);
+      await carregar();
+    } catch (err) {
+      setErro(extrairMensagemErro(err));
+      setEstudoParaApagar(null);
+    } finally {
+      setAcaoEmAndamento(null);
+    }
+  }
+
+  function handleFecharModal() {
+    if (acaoEmAndamento) return; // impede fechar durante exclusão em andamento
+    setEstudoParaApagar(null);
   }
 
   function handleNovoEstudo() {
@@ -278,6 +300,18 @@ export default function Historico() {
                               Restaurar
                             </Button>
                           )}
+                          {/* Apagar: admin na view de arquivados — abre modal */}
+                          {isAdmin && mostrarArquivados && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon={Trash2}
+                              title="Apagar definitivamente"
+                              onClick={() => setEstudoParaApagar(estudo)}
+                              disabled={acaoEmAndamento === estudo.session_id}
+                              className="text-red-500 hover:text-red-700"
+                            />
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -292,6 +326,69 @@ export default function Historico() {
           Os estudos são salvos automaticamente a cada etapa concluída.
         </p>
       </div>
+
+      {/* Modal de confirmação de exclusão permanente */}
+      {estudoParaApagar && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+          onClick={handleFecharModal}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Cabeçalho */}
+            <div className="flex items-start gap-3 mb-4">
+              <div className="flex-shrink-0 mt-0.5 rounded-full bg-red-100 p-2">
+                <TriangleAlert size={18} className="text-red-600" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-am-navy leading-snug">
+                  Apagar estudo definitivamente?
+                </h2>
+                <p className="text-sm text-am-text-secondary mt-0.5 font-medium truncate">
+                  {estudoParaApagar.cliente}
+                </p>
+              </div>
+            </div>
+
+            {/* Aviso */}
+            <div className="rounded-lg bg-red-50 border border-red-200 p-3 mb-5 text-sm text-red-800 leading-relaxed">
+              <p>
+                <strong>Esta ação não pode ser desfeita.</strong> O estudo será removido
+                permanentemente e <strong>deixará de alimentar a memória do time</strong>{" "}
+                — ele não aparecerá mais em benchmarks de preço, savings ou casos similares.
+              </p>
+              <p className="mt-2 text-xs text-red-600">
+                Se não tiver certeza, clique em Cancelar e mantenha o estudo arquivado.
+              </p>
+            </div>
+
+            {/* Ações */}
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleFecharModal}
+                disabled={acaoEmAndamento === estudoParaApagar.session_id}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                icon={Trash2}
+                onClick={() => handleApagar(estudoParaApagar)}
+                disabled={acaoEmAndamento === estudoParaApagar.session_id}
+              >
+                {acaoEmAndamento === estudoParaApagar.session_id
+                  ? "Apagando…"
+                  : "Apagar definitivamente"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

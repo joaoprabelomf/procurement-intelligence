@@ -159,6 +159,10 @@ export async function desarquivarEstudo(sessionId) {
   await api.patch(`/estudos/${sessionId}/desarquivar`);
 }
 
+export async function apagarEstudo(sessionId) {
+  await api.delete(`/estudos/${sessionId}`);
+}
+
 export async function obterEstadoSessao(sessionId) {
   const { data } = await api.get(`/sessoes/${sessionId}`);
   return data;
