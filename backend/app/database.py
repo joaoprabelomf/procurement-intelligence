@@ -30,6 +30,9 @@ Estrutura do banco (Degrau 2 — Parte 1: additive, sem quebrar dados existentes
         dados         TEXT JSON do Estudo completo
         time_id       INTEGER FK → times.id
                       (NULL em estudos legados → migrados automaticamente na startup)
+        arquivado     INTEGER 0=ativo (padrão), 1=arquivado — additive, DEFAULT 0
+                      estudos arquivados não aparecem no histórico normal nem na
+                      memória RAG (benchmark/casos similares)
 """
 
 import json
@@ -124,18 +127,19 @@ def inicializar_banco() -> None:
             )
         """)
 
-        # 3. Estudos — coluna time_id incluída para bancos novos
+        # 3. Estudos — colunas time_id e arquivado incluídas para bancos novos
         conn.execute("""
             CREATE TABLE IF NOT EXISTS estudos (
                 session_id    TEXT PRIMARY KEY,
                 criado_em     TEXT NOT NULL,
                 atualizado_em TEXT NOT NULL,
                 dados         TEXT NOT NULL,
-                time_id       INTEGER REFERENCES times(id)
+                time_id       INTEGER REFERENCES times(id),
+                arquivado     INTEGER NOT NULL DEFAULT 0
             )
         """)
 
-        # 4. Banco legado (sem coluna time_id) — adiciona sem perder dados
+        # 4. Bancos legados — adiciona colunas ausentes sem perder dados
         colunas_estudos = {
             row["name"]
             for row in conn.execute("PRAGMA table_info(estudos)")
@@ -145,6 +149,12 @@ def inicializar_banco() -> None:
                 "ALTER TABLE estudos ADD COLUMN time_id INTEGER REFERENCES times(id)"
             )
             logger.info("[DB] Coluna time_id adicionada à tabela estudos (migração legada)")
+
+        if "arquivado" not in colunas_estudos:
+            conn.execute(
+                "ALTER TABLE estudos ADD COLUMN arquivado INTEGER NOT NULL DEFAULT 0"
+            )
+            logger.info("[DB] Coluna arquivado adicionada à tabela estudos (migração legada)")
 
         conn.commit()
 
@@ -260,10 +270,12 @@ def obter_time_id_do_estudo(session_id: str) -> int | None:
     return row["time_id"] if row else None
 
 
-def listar_estudos_resumo(time_id: int) -> list[dict]:
+def listar_estudos_resumo(time_id: int, arquivado: bool = False) -> list[dict]:
     """
     Lista estudos do time especificado com os campos úteis para o histórico.
 
+    arquivado=False (padrão): retorna apenas estudos ativos.
+    arquivado=True: retorna apenas estudos arquivados.
     Filtra por time_id — cada usuário vê apenas os estudos do seu time.
     Extrai cliente, categoria, micro_categoria e etapa_atual do JSON de cada
     estudo com segurança (campos ausentes recebem valores padrão legíveis).
@@ -271,12 +283,13 @@ def listar_estudos_resumo(time_id: int) -> list[dict]:
     with _DB_LOCK, _conectar() as conn:
         rows = conn.execute(
             """
-            SELECT session_id, criado_em, atualizado_em, dados
+            SELECT session_id, criado_em, atualizado_em, dados, arquivado
             FROM estudos
             WHERE time_id = ?
+              AND arquivado = ?
             ORDER BY atualizado_em DESC
             """,
-            (time_id,),
+            (time_id, 1 if arquivado else 0),
         ).fetchall()
 
     resultado = []
@@ -294,9 +307,39 @@ def listar_estudos_resumo(time_id: int) -> list[dict]:
             "categoria": dados.get("categoria"),
             "micro_categoria": dados.get("micro_categoria"),
             "etapa_atual": dados.get("etapa_atual") or 1,
+            "arquivado": bool(row["arquivado"]),
         })
 
     return resultado
+
+
+def arquivar_estudo(session_id: str, time_id: int) -> bool:
+    """
+    Marca um estudo como arquivado (arquivado=1).
+    Verifica que o estudo pertence ao time (evita admin de um time agir
+    sobre estudos de outro). Devolve True se atualizou, False se não encontrou.
+    """
+    with _DB_LOCK, _conectar() as conn:
+        n = conn.execute(
+            "UPDATE estudos SET arquivado = 1 WHERE session_id = ? AND time_id = ?",
+            (session_id, time_id),
+        ).rowcount
+        conn.commit()
+    return n > 0
+
+
+def desarquivar_estudo(session_id: str, time_id: int) -> bool:
+    """
+    Restaura um estudo arquivado (arquivado=0).
+    Mesmo controle de time_id que arquivar_estudo.
+    """
+    with _DB_LOCK, _conectar() as conn:
+        n = conn.execute(
+            "UPDATE estudos SET arquivado = 0 WHERE session_id = ? AND time_id = ?",
+            (session_id, time_id),
+        ).rowcount
+        conn.commit()
+    return n > 0
 
 
 # ---------------------------------------------------------------------------
@@ -569,6 +612,7 @@ def buscar_casos_similares(
                 FROM estudos
                 WHERE time_id = ?
                   AND session_id != ?
+                  AND arquivado = 0
                 ORDER BY atualizado_em DESC
                 LIMIT 50
                 """,
@@ -630,6 +674,7 @@ def calcular_benchmark_preco(
                 SELECT dados FROM estudos
                 WHERE time_id = ?
                   AND session_id != ?
+                  AND arquivado = 0
                 ORDER BY atualizado_em DESC
                 LIMIT 50
                 """,
@@ -729,6 +774,7 @@ def calcular_benchmark_savings(
                 SELECT dados FROM estudos
                 WHERE time_id = ?
                   AND session_id != ?
+                  AND arquivado = 0
                 ORDER BY atualizado_em DESC
                 LIMIT 50
                 """,

@@ -293,9 +293,35 @@ def health():
 
 
 @app.get("/estudos")
-def listar_estudos(usuario: _Auth):
-    """Lista estudos do time do usuário autenticado."""
-    return {"estudos": database.listar_estudos_resumo(time_id=usuario["time_id"])}
+def listar_estudos(usuario: _Auth, arquivado: bool = Query(False)):
+    """
+    Lista estudos do time do usuário autenticado.
+    arquivado=false (padrão): retorna apenas estudos ativos.
+    arquivado=true: retorna apenas estudos arquivados.
+    """
+    return {"estudos": database.listar_estudos_resumo(time_id=usuario["time_id"], arquivado=arquivado)}
+
+
+@app.patch("/estudos/{session_id}/arquivar")
+def arquivar_estudo_rota(session_id: str, admin: _Admin):
+    """
+    Arquiva um estudo do próprio time (só admin).
+    O estudo some do histórico normal e da memória RAG, mas não é apagado
+    — pode ser recuperado via desarquivar.
+    """
+    encontrado = database.arquivar_estudo(session_id, admin["time_id"])
+    if not encontrado:
+        raise HTTPException(status_code=404, detail="Estudo não encontrado neste time.")
+    return {"ok": True}
+
+
+@app.patch("/estudos/{session_id}/desarquivar")
+def desarquivar_estudo_rota(session_id: str, admin: _Admin):
+    """Restaura um estudo arquivado (só admin). O estudo volta ao histórico normal."""
+    encontrado = database.desarquivar_estudo(session_id, admin["time_id"])
+    if not encontrado:
+        raise HTTPException(status_code=404, detail="Estudo não encontrado neste time.")
+    return {"ok": True}
 
 
 @app.get("/pipeline")

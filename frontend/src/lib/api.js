@@ -146,9 +146,17 @@ export async function criarSessao() {
   return data.session_id;
 }
 
-export async function listarEstudos() {
-  const { data } = await api.get("/estudos");
+export async function listarEstudos(arquivado = false) {
+  const { data } = await api.get("/estudos", { params: { arquivado } });
   return data.estudos;
+}
+
+export async function arquivarEstudo(sessionId) {
+  await api.patch(`/estudos/${sessionId}/arquivar`);
+}
+
+export async function desarquivarEstudo(sessionId) {
+  await api.patch(`/estudos/${sessionId}/desarquivar`);
 }
 
 export async function obterEstadoSessao(sessionId) {

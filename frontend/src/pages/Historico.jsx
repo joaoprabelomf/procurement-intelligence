@@ -1,11 +1,17 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { History, FolderOpen, Plus, RefreshCw } from "lucide-react";
+import { History, FolderOpen, Plus, RefreshCw, Archive, ArchiveRestore } from "lucide-react";
 import TopBar from "../components/TopBar";
 import Card from "../components/Card";
 import Button from "../components/Button";
 import { useSessao } from "../lib/SessaoContext";
-import { listarEstudos, extrairMensagemErro } from "../lib/api";
+import {
+  listarEstudos,
+  extrairMensagemErro,
+  arquivarEstudo,
+  desarquivarEstudo,
+  getTokenPayload,
+} from "../lib/api";
 
 const TOTAL_ETAPAS = 8;
 
@@ -47,16 +53,20 @@ export default function Historico() {
   const [estudos, setEstudos] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
+  const [mostrarArquivados, setMostrarArquivados] = useState(false);
+  const [acaoEmAndamento, setAcaoEmAndamento] = useState(null);
+
+  const isAdmin = getTokenPayload()?.papel === "admin";
 
   useEffect(() => {
     carregar();
-  }, []);
+  }, [mostrarArquivados]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function carregar() {
     setCarregando(true);
     setErro(null);
     try {
-      const lista = await listarEstudos();
+      const lista = await listarEstudos(mostrarArquivados);
       setEstudos(lista);
     } catch (err) {
       setErro(extrairMensagemErro(err));
@@ -70,13 +80,43 @@ export default function Historico() {
     navigate("/cascata", { state: { reabrindo: true } });
   }
 
+  async function handleArquivar(estudo) {
+    setAcaoEmAndamento(estudo.session_id);
+    setErro(null);
+    try {
+      await arquivarEstudo(estudo.session_id);
+      await carregar();
+    } catch (err) {
+      setErro(extrairMensagemErro(err));
+    } finally {
+      setAcaoEmAndamento(null);
+    }
+  }
+
+  async function handleDesarquivar(estudo) {
+    setAcaoEmAndamento(estudo.session_id);
+    setErro(null);
+    try {
+      await desarquivarEstudo(estudo.session_id);
+      await carregar();
+    } catch (err) {
+      setErro(extrairMensagemErro(err));
+    } finally {
+      setAcaoEmAndamento(null);
+    }
+  }
+
   function handleNovoEstudo() {
     navigate("/upload");
   }
 
   const subtitulo =
     estudos.length === 0 && !carregando
-      ? "Nenhum estudo salvo ainda"
+      ? mostrarArquivados
+        ? "Nenhum estudo arquivado"
+        : "Nenhum estudo salvo ainda"
+      : mostrarArquivados
+      ? `${estudos.length} estudo${estudos.length !== 1 ? "s" : ""} arquivado${estudos.length !== 1 ? "s" : ""}`
       : `${estudos.length} estudo${estudos.length !== 1 ? "s" : ""} salvo${estudos.length !== 1 ? "s" : ""}`;
 
   return (
@@ -85,18 +125,32 @@ export default function Historico() {
         <TopBar />
 
         <Card
-          title="Histórico de estudos"
+          title={mostrarArquivados ? "Estudos arquivados" : "Histórico de estudos"}
           subtitle={subtitulo}
           className="mt-2"
         >
           {/* Barra de ações */}
           <div className="flex items-center justify-between mb-4">
-            <Button variant="ghost" size="sm" icon={RefreshCw} onClick={carregar} disabled={carregando}>
-              Atualizar
-            </Button>
-            <Button variant="primary" size="sm" icon={Plus} onClick={handleNovoEstudo}>
-              Novo estudo
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" icon={RefreshCw} onClick={carregar} disabled={carregando}>
+                Atualizar
+              </Button>
+              {isAdmin && (
+                <Button
+                  variant={mostrarArquivados ? "secondary" : "ghost"}
+                  size="sm"
+                  icon={Archive}
+                  onClick={() => setMostrarArquivados(!mostrarArquivados)}
+                >
+                  {mostrarArquivados ? "Ver ativos" : "Ver arquivados"}
+                </Button>
+              )}
+            </div>
+            {!mostrarArquivados && (
+              <Button variant="primary" size="sm" icon={Plus} onClick={handleNovoEstudo}>
+                Novo estudo
+              </Button>
+            )}
           </div>
 
           {/* Estado de carregamento */}
@@ -114,12 +168,22 @@ export default function Historico() {
           {/* Lista vazia */}
           {!carregando && !erro && estudos.length === 0 && (
             <div className="py-12 flex flex-col items-center gap-3 text-am-text-secondary">
-              <History size={36} className="text-am-border-strong" />
-              <p className="text-sm font-medium">Nenhum estudo salvo ainda</p>
-              <p className="text-xs">Inicie um novo estudo para que ele apareça aqui.</p>
-              <Button variant="secondary" size="sm" icon={Plus} onClick={handleNovoEstudo} className="mt-2">
-                Iniciar primeiro estudo
-              </Button>
+              {mostrarArquivados ? (
+                <>
+                  <Archive size={36} className="text-am-border-strong" />
+                  <p className="text-sm font-medium">Nenhum estudo arquivado</p>
+                  <p className="text-xs">Arquive um estudo para que ele apareça aqui.</p>
+                </>
+              ) : (
+                <>
+                  <History size={36} className="text-am-border-strong" />
+                  <p className="text-sm font-medium">Nenhum estudo salvo ainda</p>
+                  <p className="text-xs">Inicie um novo estudo para que ele apareça aqui.</p>
+                  <Button variant="secondary" size="sm" icon={Plus} onClick={handleNovoEstudo} className="mt-2">
+                    Iniciar primeiro estudo
+                  </Button>
+                </>
+              )}
             </div>
           )}
 
@@ -129,19 +193,19 @@ export default function Historico() {
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="border-b border-am-border">
-                    <th className="text-left text-xs font-semibold text-am-text-secondary py-2 pr-4 w-[30%]">
+                    <th className="text-left text-xs font-semibold text-am-text-secondary py-2 pr-4 w-[28%]">
                       Cliente / Estudo
                     </th>
                     <th className="text-left text-xs font-semibold text-am-text-secondary py-2 pr-4 w-[20%]">
                       Categoria
                     </th>
-                    <th className="text-left text-xs font-semibold text-am-text-secondary py-2 pr-4 w-[20%]">
+                    <th className="text-left text-xs font-semibold text-am-text-secondary py-2 pr-4 w-[18%]">
                       Progresso
                     </th>
-                    <th className="text-left text-xs font-semibold text-am-text-secondary py-2 pr-4 w-[20%]">
+                    <th className="text-left text-xs font-semibold text-am-text-secondary py-2 pr-4 w-[18%]">
                       Última atualização
                     </th>
-                    <th className="py-2 w-[10%]" />
+                    <th className="py-2 w-[16%]" />
                   </tr>
                 </thead>
                 <tbody>
@@ -178,15 +242,43 @@ export default function Historico() {
                       <td className="py-3 pr-4 text-xs text-am-text-secondary">
                         {formatarData(estudo.atualizado_em)}
                       </td>
-                      <td className="py-3 text-right">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          icon={FolderOpen}
-                          onClick={() => handleReabrir(estudo)}
-                        >
-                          Reabrir
-                        </Button>
+                      <td className="py-3">
+                        <div className="flex items-center justify-end gap-1.5 flex-nowrap">
+                          {/* Reabrir: só na view ativa */}
+                          {!mostrarArquivados && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              icon={FolderOpen}
+                              onClick={() => handleReabrir(estudo)}
+                            >
+                              Reabrir
+                            </Button>
+                          )}
+                          {/* Arquivar: admin na view ativa (ícone sem texto para caber) */}
+                          {isAdmin && !mostrarArquivados && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon={Archive}
+                              title="Arquivar estudo"
+                              onClick={() => handleArquivar(estudo)}
+                              disabled={acaoEmAndamento === estudo.session_id}
+                            />
+                          )}
+                          {/* Restaurar: admin na view de arquivados */}
+                          {isAdmin && mostrarArquivados && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon={ArchiveRestore}
+                              onClick={() => handleDesarquivar(estudo)}
+                              disabled={acaoEmAndamento === estudo.session_id}
+                            >
+                              Restaurar
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
