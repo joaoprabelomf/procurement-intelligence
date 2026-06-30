@@ -293,13 +293,28 @@ def health():
 
 
 @app.get("/estudos")
-def listar_estudos(usuario: _Auth, arquivado: bool = Query(False)):
+def listar_estudos(
+    usuario: _Auth,
+    arquivado: bool = Query(False),
+    categoria: str | None = Query(None),
+    cliente: str | None = Query(None),
+    data_de: str | None = Query(None),
+    data_ate: str | None = Query(None),
+):
     """
     Lista estudos do time do usuário autenticado.
     arquivado=false (padrão): retorna apenas estudos ativos.
     arquivado=true: retorna apenas estudos arquivados.
+    categoria, cliente, data_de, data_ate: filtros opcionais (todos aditivos).
     """
-    return {"estudos": database.listar_estudos_resumo(time_id=usuario["time_id"], arquivado=arquivado)}
+    return {"estudos": database.listar_estudos_resumo(
+        time_id=usuario["time_id"],
+        arquivado=arquivado,
+        categoria=categoria or None,
+        cliente=cliente or None,
+        data_de=data_de or None,
+        data_ate=data_ate or None,
+    )}
 
 
 @app.patch("/estudos/{session_id}/arquivar")

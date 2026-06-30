@@ -146,8 +146,16 @@ export async function criarSessao() {
   return data.session_id;
 }
 
-export async function listarEstudos(arquivado = false) {
-  const { data } = await api.get("/estudos", { params: { arquivado } });
+export async function listarEstudos(arquivado = false, { categoria, cliente, dataDe, dataAte } = {}) {
+  const { data } = await api.get("/estudos", {
+    params: {
+      arquivado,
+      categoria: categoria || undefined,
+      cliente: cliente || undefined,
+      data_de: dataDe || undefined,
+      data_ate: dataAte || undefined,
+    },
+  });
   return data.estudos;
 }
 
