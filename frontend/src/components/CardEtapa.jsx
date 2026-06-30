@@ -4,15 +4,15 @@ import ReactMarkdown from "react-markdown";
 import Button from "./Button";
 import DownloadBar from "./DownloadBar";
 import {
-  urlDownloadEtapa5Word, urlDownloadEtapa5Excel, urlDownloadEtapa5Ppt,
-  urlDownloadEtapa7Word, urlDownloadEtapa7Excel, urlDownloadEtapa7Ppt,
-  urlDownloadEtapa8Word, urlDownloadEtapa8Excel, urlDownloadEtapa8Ppt,
+  baixarEtapa5Word, baixarEtapa5Excel, baixarEtapa5Ppt,
+  baixarEtapa7Word, baixarEtapa7Excel, baixarEtapa7Ppt,
+  baixarEtapa8Word, baixarEtapa8Excel, baixarEtapa8Ppt,
 } from "../lib/api";
 
-const URLS_DOWNLOAD = {
-  5: { word: urlDownloadEtapa5Word, excel: urlDownloadEtapa5Excel, ppt: urlDownloadEtapa5Ppt },
-  7: { word: urlDownloadEtapa7Word, excel: urlDownloadEtapa7Excel, ppt: urlDownloadEtapa7Ppt },
-  8: { word: urlDownloadEtapa8Word, excel: urlDownloadEtapa8Excel, ppt: urlDownloadEtapa8Ppt },
+const DOWNLOADS_POR_ETAPA = {
+  5: { word: baixarEtapa5Word, excel: baixarEtapa5Excel, ppt: baixarEtapa5Ppt },
+  7: { word: baixarEtapa7Word, excel: baixarEtapa7Excel, ppt: baixarEtapa7Ppt },
+  8: { word: baixarEtapa8Word, excel: baixarEtapa8Excel, ppt: baixarEtapa8Ppt },
 };
 
 // Card genérico de revisão/confirmação de uma etapa concluída. Usado por
@@ -38,7 +38,7 @@ export default function CardEtapa({
   const [enviando, setEnviando] = useState(false);
   const [historico, setHistorico] = useState([]);
 
-  const urlsDownload = URLS_DOWNLOAD[numeroEtapa];
+  const downloadsEtapa = DOWNLOADS_POR_ETAPA[numeroEtapa];
 
   async function enviarMensagem(e) {
     e.preventDefault();
@@ -63,11 +63,11 @@ export default function CardEtapa({
         <ReactMarkdown>{resumo}</ReactMarkdown>
       </div>
 
-      {urlsDownload && (
+      {downloadsEtapa && (
         <DownloadBar
-          urlWord={urlsDownload.word(sessionId)}
-          urlExcel={urlsDownload.excel(sessionId)}
-          urlPpt={urlsDownload.ppt(sessionId)}
+          baixarWord={() => downloadsEtapa.word(sessionId)}
+          baixarExcel={() => downloadsEtapa.excel(sessionId)}
+          baixarPpt={() => downloadsEtapa.ppt(sessionId)}
           label={`Entregáveis da etapa ${numeroEtapa}`}
         />
       )}

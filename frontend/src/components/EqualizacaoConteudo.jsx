@@ -6,7 +6,7 @@ import Card from "./Card";
 import DownloadBar from "./DownloadBar";
 import KpisEqualizacao from "./KpisEqualizacao";
 import TabelaEqualizacao from "./TabelaEqualizacao";
-import { resumoExecutivoEtapa6, urlDownloadEtapa6Word, urlDownloadEtapa6Excel, urlDownloadEtapa6Ppt } from "../lib/api";
+import { resumoExecutivoEtapa6, baixarEtapa6Word, baixarEtapa6Excel, baixarEtapa6Ppt } from "../lib/api";
 
 function formatarPct(valor) {
   if (valor == null) return "—";
@@ -101,9 +101,9 @@ export default function EqualizacaoConteudo({
       <TabelaEqualizacao key={chaveRecarregar} sessionId={sessionId} moeda={resumo?.moeda_referencia || "BRL"} />
 
       <DownloadBar
-        urlWord={urlDownloadEtapa6Word(sessionId)}
-        urlExcel={urlDownloadEtapa6Excel(sessionId)}
-        urlPpt={urlDownloadEtapa6Ppt(sessionId)}
+        baixarWord={() => baixarEtapa6Word(sessionId)}
+        baixarExcel={() => baixarEtapa6Excel(sessionId)}
+        baixarPpt={() => baixarEtapa6Ppt(sessionId)}
         label="Entregáveis da etapa 6"
       />
 

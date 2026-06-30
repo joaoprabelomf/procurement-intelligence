@@ -3,7 +3,7 @@ import MatrizKraljic from "./MatrizKraljic";
 import DownloadBar from "./DownloadBar";
 import BadgeRAG from "./BadgeRAG";
 import BadgeConfianca from "./BadgeConfianca";
-import { urlDownloadEtapa8Word, urlDownloadEtapa8Excel, urlDownloadEtapa8Ppt } from "../lib/api";
+import { baixarEtapa8Word, baixarEtapa8Excel, baixarEtapa8Ppt } from "../lib/api";
 
 // Conteúdo visual completo do resultado da Etapa 8 (Matriz de Kraljic +
 // cards de relacionamento/fornecedores + comparativo executivo + ações
@@ -110,9 +110,9 @@ export default function ResultadoEtapa8Conteudo({ analise, equalizacao, sessionI
       )}
 
       <DownloadBar
-        urlWord={urlDownloadEtapa8Word(sessionId)}
-        urlExcel={urlDownloadEtapa8Excel(sessionId)}
-        urlPpt={urlDownloadEtapa8Ppt(sessionId)}
+        baixarWord={() => baixarEtapa8Word(sessionId)}
+        baixarExcel={() => baixarEtapa8Excel(sessionId)}
+        baixarPpt={() => baixarEtapa8Ppt(sessionId)}
         label="Exportar entregáveis da etapa 8"
       />
     </div>

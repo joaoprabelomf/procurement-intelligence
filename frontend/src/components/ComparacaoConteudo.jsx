@@ -5,7 +5,7 @@ import Button from "./Button";
 import Card from "./Card";
 import DownloadBar from "./DownloadBar";
 import TabelaComparacao from "./TabelaComparacao";
-import { resumoExecutivoEtapa5, urlDownloadEtapa5Word, urlDownloadEtapa5Excel, urlDownloadEtapa5Ppt } from "../lib/api";
+import { resumoExecutivoEtapa5, baixarEtapa5Word, baixarEtapa5Excel, baixarEtapa5Ppt } from "../lib/api";
 
 // "Mini-app" da Etapa 5 (Comparação Técnica) — KPIs técnicos (não
 // comerciais: sem preço, por design da própria etapa) + tabela com
@@ -83,9 +83,9 @@ export default function ComparacaoConteudo({
       <TabelaComparacao key={chaveRecarregar} sessionId={sessionId} temMandatoriosFormais={resumo?.tem_mandatorios_formais !== false} />
 
       <DownloadBar
-        urlWord={urlDownloadEtapa5Word(sessionId)}
-        urlExcel={urlDownloadEtapa5Excel(sessionId)}
-        urlPpt={urlDownloadEtapa5Ppt(sessionId)}
+        baixarWord={() => baixarEtapa5Word(sessionId)}
+        baixarExcel={() => baixarEtapa5Excel(sessionId)}
+        baixarPpt={() => baixarEtapa5Ppt(sessionId)}
         label="Entregáveis da etapa 5"
       />
 
