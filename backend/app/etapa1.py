@@ -99,10 +99,10 @@ TAREFA 4 — Para o conjunto, informe:
   variavel_por_consumo | tpq | misto | desconhecido
  
 LIMITES (respeite para o JSON não truncar):
-- No máximo 15 documentos e no máximo 10 proponentes.
+- No máximo 30 documentos e no máximo 12 proponentes.
 - Cada "resumo" com no máximo 1 frase curta.
 - O "resumo" dentro de "escopo_inferido" também com no máximo 1-2 frases curtas.
-- O JSON inteiro deve caber em 3500 tokens.
+- O JSON inteiro deve caber em 6000 tokens.
  
 Responda SOMENTE com um objeto JSON válido, sem texto antes ou depois, no
 formato:
@@ -383,7 +383,7 @@ def rodar_etapa1(estudo, documentos_lidos: list) -> dict:
     resposta_bruta = call_claude(
         messages=[{"role": "user", "content": mensagem_usuario}],
         system=SYSTEM_CLASSIFICACAO,
-        max_tokens=4000,
+        max_tokens=8000,
     )
     print(f"[PERF] etapa1 call_claude ({n_docs} docs, {_chars_input} chars): {_time.time() - _t_ia:.2f}s")
 
@@ -471,7 +471,7 @@ Regras de agrupamento (mantenha-as):
 - Renumere os IDs dos proponentes sequencialmente (P1, P2...) após a mudança.
 - Mantenha "obs_precificacao" se já existir.
 
-LIMITES: máximo 15 documentos, máximo 10 proponentes, JSON em até 3500 tokens.
+LIMITES: máximo 30 documentos, máximo 12 proponentes, JSON em até 6000 tokens.
 Devolva SOMENTE o JSON, sem texto antes ou depois, com as chaves:
 cliente, documentos, proponentes, categoria, modelo_precificacao, obs_precificacao.
 """
@@ -480,7 +480,7 @@ cliente, documentos, proponentes, categoria, modelo_precificacao, obs_precificac
     resposta = call_claude(
         messages=[{"role": "user", "content": mensagem}],
         system=system,
-        max_tokens=4000,
+        max_tokens=8000,
     )
 
     try:
@@ -576,7 +576,7 @@ Regras de agrupamento (mantenha sempre, ao editar):
 - edital, baseline, fornecedor e desconhecido NÃO entram em proponentes.
 - Renumere os IDs (P1, P2...) após qualquer mudança nos proponentes.
 
-LIMITES: máximo 15 documentos, máximo 10 proponentes, JSON em até 3500 tokens.
+LIMITES: máximo 30 documentos, máximo 12 proponentes, JSON em até 6000 tokens.
 
 Responda SOMENTE com um objeto JSON válido, sem texto antes ou depois:
 {
@@ -598,7 +598,7 @@ O campo "estado" só aparece quando tipo = "edicao".
     resposta = call_claude(
         messages=[{"role": "user", "content": mensagem_user}],
         system=system,
-        max_tokens=4000,
+        max_tokens=8000,
     )
 
     try:
